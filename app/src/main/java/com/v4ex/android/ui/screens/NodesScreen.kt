@@ -100,78 +100,82 @@ fun NodesScreen(
             }
         }
 
-        Text(
-            if (nodes.isEmpty()) "找到感兴趣的话题" else "${nodes.size} 个节点，总有你感兴趣的话题",
-            Modifier.padding(start = 22.dp, top = 5.dp, bottom = 4.dp),
-            fontSize = 12.5.sp, color = Ink.Secondary,
-        )
-
-        // 常用节点快捷入口：纯本地存储，V2EX 没有收藏/关注接口
-        if (favNodes.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                contentPadding = PaddingValues(horizontal = 22.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(favNodes, key = { it.first }) { (name, title) ->
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Ink.ChipBg)
-                            .clickable { onNodeByName(name) }
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            title.ifBlank { name },
-                            fontSize = 13.sp,
-                            color = Ink.Primary,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // 三种情形要分开：还在加载 / 搜不到 / 节点根本没拉下来
-        if (nodes.isEmpty() && loading) {
-            com.v4ex.android.ui.LoadingBlock("正在读取节点…")
-        }
-        if (nodes.isEmpty() && !loading) {
-            EmptyState(
-                title = "节点还没到手",
-                hint = "网络可能断了，也可能 V2EX 正在打个盹。",
-                art = EmptyArt.Offline,
-            )
-        }
-
-        if (nodes.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                listOf(true to "分类", false to "全部").forEach { (mode, label) ->
-                    Text(
-                        label,
-                        Modifier.clip(RoundedCornerShape(12.dp))
-                            .background(if (categorized == mode) Ink.Primary else Ink.ChipBg)
-                            .clickable { categorized = mode }
-                            .padding(horizontal = 15.dp, vertical = 8.dp),
-                        fontSize = 13.sp,
-                        color = if (categorized == mode) Ink.OnPrimary else Ink.Secondary,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Text(if (categorized) "按节点归属" else "按主题数量", fontSize = 11.5.sp, color = Ink.Tertiary)
-            }
-        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 110.dp),
         ) {
+            item(key = "node-overview") {
+                Column {
+                    Text(
+                        if (nodes.isEmpty()) "找到感兴趣的话题" else "${nodes.size} 个节点，总有你感兴趣的话题",
+                        Modifier.padding(start = 22.dp, top = 5.dp, bottom = 4.dp),
+                        fontSize = 12.5.sp, color = Ink.Secondary,
+                    )
+
+                    // 常用节点快捷入口：纯本地存储，V2EX 没有收藏/关注接口
+                    if (favNodes.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 22.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(favNodes, key = { it.first }) { (name, title) ->
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Ink.ChipBg)
+                                        .clickable { onNodeByName(name) }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        title.ifBlank { name },
+                                        fontSize = 13.sp,
+                                        color = Ink.Primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 三种情形要分开：还在加载 / 搜不到 / 节点根本没拉下来
+                    if (nodes.isEmpty() && loading) {
+                        com.v4ex.android.ui.LoadingBlock("正在读取节点…")
+                    }
+                    if (nodes.isEmpty() && !loading) {
+                        EmptyState(
+                            title = "节点还没到手",
+                            hint = "网络可能断了，也可能 V2EX 正在打个盹。",
+                            art = EmptyArt.Offline,
+                        )
+                    }
+
+                    if (nodes.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            listOf(true to "分类", false to "全部").forEach { (mode, label) ->
+                                Text(
+                                    label,
+                                    Modifier.clip(RoundedCornerShape(12.dp))
+                                        .background(if (categorized == mode) Ink.Primary else Ink.ChipBg)
+                                        .clickable { categorized = mode }
+                                        .padding(horizontal = 15.dp, vertical = 8.dp),
+                                    fontSize = 13.sp,
+                                    color = if (categorized == mode) Ink.OnPrimary else Ink.Secondary,
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Text(if (categorized) "按节点归属" else "按主题数量", fontSize = 11.5.sp, color = Ink.Tertiary)
+                        }
+                    }
+                }
+            }
             if (categorized) {
                 groups.forEach { group ->
                     val isExpanded = group.key in expanded

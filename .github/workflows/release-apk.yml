@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      V4EX_storeFile: ${{ runner.temp }}/v4ex-release.jks
       V4EX_storePassword: ${{ secrets.V4EX_STORE_PASSWORD }}
       V4EX_keyAlias: ${{ secrets.V4EX_KEY_ALIAS }}
       V4EX_keyPassword: ${{ secrets.V4EX_KEY_PASSWORD }}
@@ -31,6 +30,9 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      - name: Configure release signing path
+        run: echo "V4EX_storeFile=$RUNNER_TEMP/v4ex-release.jks" >> "$GITHUB_ENV"
 
       - name: Restore release signing key
         env:

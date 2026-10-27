@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.Conversation
@@ -58,6 +62,7 @@ import com.v4ex.android.ui.ShareSheet
 import com.v4ex.android.ui.replyItems
 import com.v4ex.android.ui.theme.Ink
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TopicScreen(
     loading: Boolean,
@@ -194,23 +199,34 @@ fun TopicScreen(
                             color = Ink.Primary,
                         )
                         Spacer(Modifier.height(10.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(
-                                url = topic.member.avatar,
-                                name = topic.member.username,
-                                size = 22.dp,
-                                modifier = Modifier.clickable { onAuthor(topic.member.username) },
-                            )
-                            Spacer(Modifier.width(7.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(
+                                    url = topic.member.avatar,
+                                    name = topic.member.username,
+                                    size = 22.dp,
+                                    modifier = Modifier.clickable { onAuthor(topic.member.username) },
+                                )
+                                Spacer(Modifier.width(7.dp))
+                                Text(topic.member.username, fontSize = 12.5.sp, color = Ink.Secondary)
+                            }
+                            if (topic.node.name.isNotBlank()) {
+                                Text(
+                                    topic.node.name,
+                                    Modifier.align(Alignment.CenterVertically).widthIn(max = 140.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(Ink.ChipBg)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                             Text(
-                                buildString {
-                                    append(topic.member.username)
-                                    append(" · /go/").append(topic.node.name)
-                                    append(" · ").append(Time.ago(topic.created))
-                                    append(" · ").append(topic.replies).append(" 回复")
-                                },
-                                fontSize = 12.5.sp,
-                                color = Ink.Secondary,
+                                "${Time.ago(topic.created)} · ${topic.replies} 回复",
+                                Modifier.align(Alignment.CenterVertically), fontSize = 12.5.sp, color = Ink.Secondary,
                             )
                         }
                         if (topic.content.isNotBlank()) {
