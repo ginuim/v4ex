@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,9 +37,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.v4ex.android.data.RememberedUser
 import com.v4ex.android.data.Me
 import com.v4ex.android.data.Time
 import com.v4ex.android.data.Topic
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.v4ex.android.ui.DisclosureArrow
 import com.v4ex.android.ui.Avatar
 import com.v4ex.android.ui.ErrorLine
 import com.v4ex.android.ui.InlineChip
@@ -59,8 +62,11 @@ fun HomeScreen(
     readIds: Set<String>,
     unreadOnly: Boolean,
     onUnreadOnly: (Boolean) -> Unit,
+    hotExpanded: Boolean,
+    onHotExpanded: (Boolean) -> Unit,
     nodeCount: Int,
     me: Me?,
+    rememberedUser: RememberedUser,
     refreshing: Boolean,
     updating: Boolean,
     cachedAt: Long?,
@@ -70,6 +76,8 @@ fun HomeScreen(
     error: String?,
     onTopic: (Topic) -> Unit,
     onAuthor: (String) -> Unit,
+    canCompose: Boolean,
+    onCompose: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
 ) {
@@ -105,6 +113,7 @@ fun HomeScreen(
             item(key = "header") {
                 HomeHeader(
                     me = me,
+                    rememberedUser = rememberedUser,
                     hotCount = visibleHot.size,
                     latestCount = visibleLatest.size,
                     nodeCount = nodeCount,
@@ -114,7 +123,8 @@ fun HomeScreen(
                     unreadOnly = unreadOnly,
                     hiddenCount = (hot.size - visibleHot.size) + (latest.size - visibleLatest.size),
                     onUnreadOnly = onUnreadOnly,
-                    onRefresh = onRefresh,
+                    canCompose = canCompose,
+                    onCompose = onCompose,
                 )
             }
 
@@ -127,8 +137,20 @@ fun HomeScreen(
             }
 
             if (visibleHot.isNotEmpty()) {
-                item(key = "sec-hot") { SectionLabel("热门 ${visibleHot.size}") }
-                items(visibleHot, key = { "h${it.id}" }) { topic ->
+                item(key = "sec-hot") {
+                    Row(
+                        Modifier.fillMaxWidth().semantics {
+                            stateDescription = if (hotExpanded) "已展开" else "已收起"
+                        }.clickable { onHotExpanded(!hotExpanded) }
+                            .padding(horizontal = 22.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("热门 ${visibleHot.size}", fontSize = 12.5.sp, color = Ink.Secondary)
+                        Spacer(Modifier.width(4.dp))
+                        DisclosureArrow(hotExpanded)
+                    }
+                }
+                if (hotExpanded) items(visibleHot, key = { "h${it.id}" }) { topic ->
                     TopicRow(
                         topic = topic,
                         read = topic.id.toString() in readIds,
@@ -165,6 +187,7 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(
     me: Me?,
+    rememberedUser: RememberedUser,
     hotCount: Int,
     latestCount: Int,
     nodeCount: Int,
@@ -174,7 +197,8 @@ private fun HomeHeader(
     unreadOnly: Boolean,
     hiddenCount: Int,
     onUnreadOnly: (Boolean) -> Unit,
-    onRefresh: () -> Unit,
+    canCompose: Boolean,
+    onCompose: () -> Unit,
 ) {
     Column {
         Spacer(Modifier.height(6.dp))
@@ -190,11 +214,16 @@ private fun HomeHeader(
                 color = Ink.Primary,
             )
             Spacer(Modifier.weight(1f))
+            if (canCompose) {
+                androidx.compose.material3.TextButton(onClick = onCompose) {
+                    Text("发帖", fontSize = 13.sp, color = Ink.Primary)
+                }
+            }
             // 只看未读：整个胶囊可点，状态用底色和文字颜色区分（不用开关控件，视觉太吵）
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (unreadOnly) Ink.Primary else Ink.ChipBg)
+                    .background(if (unreadOnly) Ink.FilterSelected else Ink.ChipBg)
                     .clickable { onUnreadOnly(!unreadOnly) }
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -203,30 +232,25 @@ private fun HomeHeader(
                     "只看未读",
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Medium,
-                    color = if (unreadOnly) Color.White else Ink.Secondary,
+                    color = if (unreadOnly) Ink.OnFilterSelected else Ink.Secondary,
                 )
-            }
-            Spacer(Modifier.width(4.dp))
-            Box(
-                Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onRefresh),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Refresh, "刷新", Modifier.size(18.dp), tint = Ink.Secondary)
             }
         }
 
         Spacer(Modifier.height(16.dp))
         Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Time.greeting(), fontSize = 22.sp, fontWeight = FontWeight.Medium, color = Ink.Primary)
-            if (me != null) {
+            val username = me?.username?.takeIf { it.isNotBlank() } ?: rememberedUser.username
+            val avatar = if (me?.username == username) me.avatar else rememberedUser.avatar
+            if (username.isNotBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Avatar(me.avatar, me.username, 26.dp)
+                Avatar(avatar, username, 26.dp)
                 Spacer(Modifier.width(8.dp))
             } else {
                 Spacer(Modifier.width(6.dp))
             }
             Text(
-                me?.username?.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "v 友",
+                username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "v 友",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Medium,
                 color = Ink.Primary,
@@ -235,49 +259,42 @@ private fun HomeHeader(
         }
 
         Spacer(Modifier.height(10.dp))
-        if (loading) {
-            Text(
-                "正在同步…",
-                modifier = Modifier.padding(horizontal = 22.dp),
-                fontSize = 13.5.sp,
-                color = Ink.Tertiary,
-            )
-            Spacer(Modifier.height(8.dp))
-            return@Column
-        }
-        // 有缓存先亮出来了，后台还在拉新的：明确告诉用户这不是最新数据
-        if (updating) {
-            Text(
-                "正在同步…" + (cachedAt?.let { " · 缓存于${Time.ago(it)}" } ?: ""),
-                modifier = Modifier.padding(horizontal = 22.dp),
-                fontSize = 12.5.sp,
-                color = Ink.Tertiary,
-            )
-            Spacer(Modifier.height(6.dp))
-        }
+        val showFiltered = !loading && unreadOnly && hiddenCount > 0
         FlowRow(
             modifier = Modifier.padding(horizontal = 22.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("你有 ", fontSize = 13.5.sp, color = Ink.Secondary)
-                Spacer(Modifier.width(4.dp))
-                InlineChip("$hotCount", Ink.Blue)
-                Spacer(Modifier.width(4.dp))
-                Text(" 条热门、", fontSize = 13.5.sp, color = Ink.Secondary)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                InlineChip("$latestCount", Ink.Purple)
-                Spacer(Modifier.width(4.dp))
-                Text(" 条最新。", fontSize = 13.5.sp, color = Ink.Secondary)
-            }
             if (nodeCount > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     InlineChip("$nodeCount", Ink.Blue)
                     Spacer(Modifier.width(4.dp))
-                    Text(" 个节点可以逛。", fontSize = 13.5.sp, color = Ink.Secondary)
+                    Text(
+                        if (showFiltered) " 个节点可以逛，" else " 个节点可以逛。",
+                        fontSize = 13.5.sp,
+                        color = Ink.Secondary,
+                    )
                 }
+            }
+            if (showFiltered) {
+                Text(
+                    "已过滤掉 $hiddenCount 篇读过的",
+                    fontSize = 13.5.sp,
+                    color = Ink.Secondary,
+                )
+            }
+        }
+        if (loading || updating) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "正在同步…" + (if (updating && !loading) cachedAt?.let { " · 缓存于${Time.ago(it)}" }.orEmpty() else ""),
+                modifier = Modifier.padding(horizontal = 22.dp),
+                fontSize = if (loading) 13.5.sp else 12.5.sp,
+                color = Ink.Tertiary,
+            )
+            if (loading) {
+                Spacer(Modifier.height(8.dp))
+                return@Column
             }
         }
         // 开了只看未读但全读过了：给个明确出口，不然像 Bug
@@ -287,14 +304,6 @@ private fun HomeHeader(
                 "都读完了，去干点别的吧 · 点右上角关掉筛选",
                 modifier = Modifier.padding(horizontal = 22.dp),
                 fontSize = 13.sp,
-                color = Ink.Tertiary,
-            )
-        } else if (unreadOnly && hiddenCount > 0) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "已过滤掉 $hiddenCount 篇读过的",
-                modifier = Modifier.padding(horizontal = 22.dp),
-                fontSize = 12.5.sp,
                 color = Ink.Tertiary,
             )
         }

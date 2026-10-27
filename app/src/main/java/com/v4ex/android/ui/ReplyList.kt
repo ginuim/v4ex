@@ -162,6 +162,7 @@ private fun ChildReplyRow(
 ) {
     val reply = row.reply
     val parent = row.replyTo
+    val lineColor = Ink.Line
     Row(
         Modifier
             .fillMaxWidth()
@@ -171,7 +172,7 @@ private fun ChildReplyRow(
                 // 贴到最左缘会和缩进后的头像、正文脱节。
                 val width = 1.5.dp.toPx()
                 drawRect(
-                    color = Ink.Line,
+                    color = lineColor,
                     topLeft = Offset(37.dp.toPx(), 0f),
                     size = Size(width, size.height),
                 )

@@ -8,10 +8,18 @@ import com.v4ex.android.data.ApiException
 import com.v4ex.android.data.HistoryEntry
 import com.v4ex.android.data.HomeCacheCodec
 import com.v4ex.android.data.Me
+import com.v4ex.android.data.MemberPermissions
+import com.v4ex.android.data.NodeDetail
 import com.v4ex.android.data.Notice
+import com.v4ex.android.data.PageInfo
+import com.v4ex.android.ui.theme.ThemeMode
 import com.v4ex.android.data.Prefs
+import com.v4ex.android.data.RememberedUser
+import com.v4ex.android.data.RateLimit
 import com.v4ex.android.data.Reply
+import com.v4ex.android.data.TokenInfo
 import com.v4ex.android.data.Topic
+import com.v4ex.android.data.TopicAction
 import com.v4ex.android.data.VNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +59,13 @@ data class TopicUi(
     val topic: Topic? = null,
     val replies: List<Reply> = emptyList(),
     val error: String? = null,
+    /** 回复是否走 v2 分页（有令牌且 v2 拉成功）；false = v1 一次返回的全部楼层 */
+    val repliesPaged: Boolean = false,
+    val repliesPage: Int = 1,
+    val moreRepliesLoading: Boolean = false,
+    val hasMoreReplies: Boolean = false,
+    /** 置顶 / 放到首页的瞬时状态；null = 还没操作过 */
+    val action: TopicAction? = null,
 )
 
 data class NodeTopicsUi(
@@ -62,12 +77,17 @@ data class NodeTopicsUi(
     val canLoadMore: Boolean = false,
     val hint: String? = null,
     val error: String? = null,
+    /** v2 节点详情（需要令牌）；没有令牌时为 null，节点页就不显示说明 */
+    val detail: NodeDetail? = null,
 )
 
 data class NoticesUi(
     val loading: Boolean = false,
     val items: List<Notice> = emptyList(),
     val error: String? = null,
+    val page: Int = 1,
+    val moreLoading: Boolean = false,
+    val canLoadMore: Boolean = false,
 )
 
 data class MemberUi(
@@ -81,11 +101,68 @@ data class MeUi(
     val loading: Boolean = false,
     val me: Me? = null,
     val error: String? = null,
+    /** GET /token 的信息，用来展示配额、到期日 */
+    val tokenInfo: TokenInfo? = null,
+    val creatingToken: Boolean = false,
+    /** 刚创建出来的令牌。明文只在创建响应里出现一次，关掉就没了 */
+    val createdToken: TokenInfo? = null,
+    val createError: String? = null,
+)
+
+data class PublishUi(
+    val sending: Boolean = false,
+    val error: String? = null,
+    val completedTopicId: Int? = null,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
+    private val _rememberedUser = MutableStateFlow(RememberedUser())
+    val rememberedUser = _rememberedUser.asStateFlow()
+    private var identityRequest = 0
+    private val _publish = MutableStateFlow(PublishUi())
+    val publish = _publish.asStateFlow()
+
+    fun resetPublish() {
+        if (!_publish.value.sending) _publish.value = PublishUi()
+    }
+
+    val permissions: MemberPermissions
+        get() = MemberPermissions.resolve(tokenValue.isNotBlank(), _me.value.me, !_me.value.loading && _me.value.error == null)
+
+    fun publishTopic(node: String, title: String, content: String, syntax: String) {
+        if (!permissions.canPublish) return
+        publish { api.createTopic(node, title, content, syntax).id }
+    }
+
+    fun publishReply(topicId: Int, content: String) {
+        if (!permissions.canPublish) return
+        publish { api.createReply(topicId, content); topicId }
+    }
+
+    private fun publish(block: () -> Int) {
+        if (_publish.value.sending || _publish.value.completedTopicId != null) return
+        _publish.value = PublishUi(sending = true)
+        viewModelScope.launch {
+            try {
+                val id = withContext(Dispatchers.IO) { block() }
+                _publish.value = PublishUi(completedTopicId = id)
+            } catch (e: Exception) {
+                val message = if (e is java.io.IOException) {
+                    "网络中断，发布结果尚不确定。请先到 V2EX 确认是否已发布，再决定是否重试。"
+                } else friendly(e)
+                _publish.value = PublishUi(error = message)
+            }
+        }
+    }
+
     private val prefs = Prefs(app)
+    private val _themeMode = MutableStateFlow(ThemeMode.SYSTEM)
+    val themeMode = _themeMode.asStateFlow()
+    fun setThemeMode(value: ThemeMode) {
+        _themeMode.value = value
+        viewModelScope.launch { prefs.setThemeMode(value.name) }
+    }
 
     private val _token = MutableStateFlow<String?>(null)
     /** null = 还没从磁盘读出来 */
@@ -97,7 +174,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var tokenValue = ""
 
-    private val api = Api { tokenValue }
+    /** 最近一次请求的限流信息（X-Rate-Limit-*），「我的」页展示本小时剩余配额 */
+    private val _rateLimit = MutableStateFlow<RateLimit?>(null)
+    val rateLimit: StateFlow<RateLimit?> = _rateLimit.asStateFlow()
+
+    private val api = Api(
+        tokenProvider = { tokenValue },
+        // 请求可能发生在 IO 线程，StateFlow 本身线程安全
+        onRateLimit = { _rateLimit.value = it },
+    )
 
     private val _home = MutableStateFlow(HomeUi())
     val home = _home.asStateFlow()
@@ -133,6 +218,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val historyLoaded = _historyLoaded.asStateFlow()
 
     /** 首页只看未读。过滤在 UI 层做，不动原始列表，关掉开关立刻恢复。 */
+    private val _hotCollapsedDay = MutableStateFlow("")
+    val hotCollapsedDay = _hotCollapsedDay.asStateFlow()
+    fun setHotExpanded(expanded: Boolean) {
+        val day = if (expanded) "" else java.time.LocalDate.now().toString()
+        _hotCollapsedDay.value = day
+        viewModelScope.launch { prefs.setHotCollapsedDay(day) }
+    }
+
     private val _unreadOnly = MutableStateFlow(false)
     val unreadOnly = _unreadOnly.asStateFlow()
 
@@ -164,6 +257,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
+            prefs.themeMode.collect { _themeMode.value = ThemeMode.fromStored(it) }
+        }
+        viewModelScope.launch {
             prefs.readIds.collect { _readIds.value = it }
         }
         viewModelScope.launch {
@@ -175,6 +271,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _historyLoaded.value = true
             }
         }
+        viewModelScope.launch { prefs.hotCollapsedDay.collect { _hotCollapsedDay.value = it } }
         viewModelScope.launch {
             prefs.unreadOnly.collect { _unreadOnly.value = it }
         }
@@ -208,7 +305,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             loadNodes()
         }
         viewModelScope.launch {
+            prefs.rememberedUser.collect { _rememberedUser.value = it }
+        }
+        viewModelScope.launch {
             prefs.token.collect { value ->
+                if (tokenValue != value) {
+                    identityRequest++
+                    _me.value = MeUi()
+                }
                 tokenValue = value
                 _token.value = value
                 if (value.isNotBlank()) {
@@ -217,6 +321,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     _me.value = MeUi(loading = false)
                     _notices.value = NoticesUi()
+                    _rateLimit.value = null
                 }
             }
         }
@@ -242,8 +347,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val hasToken = tokenValue.isNotBlank()
                 val hot = withContext(Dispatchers.IO) { api.hot() }
-                val (latest, pages) = withContext(Dispatchers.IO) {
-                    if (hasToken) api.latestPage(1) else api.latest() to 1
+                val (latest, page) = withContext(Dispatchers.IO) {
+                    if (hasToken) api.latestPage(1) else api.latest() to PageInfo(pages = 1)
                 }
                 _home.value = HomeUi(
                     loading = false,
@@ -252,7 +357,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     hot = hot,
                     latest = latest,
                     page = 1,
-                    canLoadMore = hasToken && pages > 1,
+                    canLoadMore = hasToken && page.hasMore(1),
                     hint = if (hasToken) null else "填写令牌后可继续翻页",
                     cachedAt = null,
                 )
@@ -278,13 +383,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val next = current.page + 1
-                val (items, pages) = withContext(Dispatchers.IO) { api.latestPage(next) }
+                val (items, page) = withContext(Dispatchers.IO) { api.latestPage(next) }
                 val seen = current.latest.map { it.id }.toSet()
                 _home.value = current.copy(
                     latest = current.latest + items.filterNot { it.id in seen },
                     page = next,
                     moreLoading = false,
-                    canLoadMore = next < pages,
+                    canLoadMore = page.hasMore(next),
                 )
             } catch (e: Exception) {
                 _home.value = current.copy(moreLoading = false, error = friendly(e))
@@ -315,15 +420,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _nodeTopics.value = NodeTopicsUi(node = node, loading = true)
         viewModelScope.launch {
             try {
-                val (list, pages) = withContext(Dispatchers.IO) {
-                    if (hasToken) api.nodeTopicsPage(node, 1) else api.nodeTopics(node) to 1
+                // v2 节点详情只有令牌能取；拿不到就不显示节点说明，不影响主题列表
+                val detail = if (hasToken) {
+                    withContext(Dispatchers.IO) { runCatching { api.node(node) }.getOrNull() }
+                } else {
+                    null
+                }
+                val (list, page) = withContext(Dispatchers.IO) {
+                    if (hasToken) api.nodeTopicsPage(node, 1) else api.nodeTopics(node) to PageInfo(pages = 1)
                 }
                 _nodeTopics.value = NodeTopicsUi(
                     node = node,
                     loading = false,
                     topics = list,
-                    canLoadMore = hasToken && pages > 1,
+                    canLoadMore = hasToken && page.hasMore(1),
                     hint = if (hasToken) null else "填写令牌后可以继续往下翻",
+                    detail = detail,
                 )
             } catch (e: Exception) {
                 _nodeTopics.value = NodeTopicsUi(node = node, loading = false, error = friendly(e))
@@ -338,7 +450,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val next = current.page + 1
-                val (items, pages) = withContext(Dispatchers.IO) {
+                val (items, page) = withContext(Dispatchers.IO) {
                     api.nodeTopicsPage(current.node, next)
                 }
                 val seen = current.topics.map { it.id }.toSet()
@@ -346,7 +458,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     topics = current.topics + items.filterNot { it.id in seen },
                     page = next,
                     moreLoading = false,
-                    canLoadMore = next < pages,
+                    canLoadMore = page.hasMore(next),
                 )
             } catch (e: Exception) {
                 _nodeTopics.value = current.copy(moreLoading = false, error = friendly(e))
@@ -365,33 +477,131 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.clearRead() }
     }
 
+    /**
+     * 打开帖子。有令牌时优先走 v2（正文 + 首页 20 条回复），v2 挂了退回 v1，
+     * 保证「帖子总能打开」——哪怕令牌过期、v2 接口抽风。
+     */
     fun loadTopic(id: Int) {
         markRead(id)
         _topic.value = TopicUi(loading = true)
         viewModelScope.launch {
             try {
+                val hasToken = tokenValue.isNotBlank()
                 // 先出标题和正文（一般 1~2s），回复到了再补上，避免整页干等
-                val topic = withContext(Dispatchers.IO) { api.topic(id) }
-                _topic.value = TopicUi(loading = true, topic = topic)
-                // 拿到正文才算看过：加载失败的不进浏览历史
-                withContext(Dispatchers.IO) {
-                    prefs.recordHistory(
-                        HistoryEntry(
-                            id = topic.id,
-                            title = topic.title,
-                            nodeName = topic.node.name,
-                            nodeTitle = topic.node.title,
-                            author = topic.member.username,
-                            replies = topic.replies,
-                            viewedAt = System.currentTimeMillis(),
-                        )
-                    )
+                val v2Topic = if (hasToken) {
+                    withContext(Dispatchers.IO) { runCatching { api.topicV2(id) }.getOrNull() }
+                } else {
+                    null
                 }
-                val replies = withContext(Dispatchers.IO) { api.replies(id) }
-                _topic.value = TopicUi(loading = false, topic = topic, replies = replies)
+                val topic = v2Topic ?: withContext(Dispatchers.IO) { api.topic(id) }
+                _topic.value = TopicUi(loading = true, topic = topic)
+                recordHistory(topic)
+
+                // v2 回复分页（20 条/页）；失败就退回 v1 全量楼层
+                val firstPage = if (hasToken) {
+                    withContext(Dispatchers.IO) { runCatching { api.repliesPage(id, 1) }.getOrNull() }
+                } else {
+                    null
+                }
+                if (firstPage != null) {
+                    val (replies, page) = firstPage
+                    _topic.value = TopicUi(
+                        loading = false,
+                        topic = topic,
+                        replies = replies,
+                        repliesPaged = true,
+                        repliesPage = 1,
+                        hasMoreReplies = page.hasMore(1),
+                    )
+                } else {
+                    val replies = withContext(Dispatchers.IO) { api.replies(id) }
+                    _topic.value = TopicUi(loading = false, topic = topic, replies = replies)
+                }
             } catch (e: Exception) {
                 _topic.value = TopicUi(loading = false, error = friendly(e))
             }
+        }
+    }
+
+    /** 帖子页「加载更多回复」（只有 v2 分页模式才有下一页）。 */
+    fun loadMoreReplies() {
+        val current = _topic.value
+        val topic = current.topic ?: return
+        if (current.moreRepliesLoading || !current.hasMoreReplies) return
+        _topic.value = current.copy(moreRepliesLoading = true)
+        viewModelScope.launch {
+            try {
+                val next = current.repliesPage + 1
+                val (items, page) = withContext(Dispatchers.IO) { api.repliesPage(topic.id, next) }
+                val seen = current.replies.map { it.id }.toSet()
+                _topic.value = current.copy(
+                    replies = current.replies + items.filterNot { it.id in seen },
+                    repliesPage = next,
+                    moreRepliesLoading = false,
+                    hasMoreReplies = page.hasMore(next),
+                )
+            } catch (e: Exception) {
+                _topic.value = current.copy(
+                    moreRepliesLoading = false,
+                    action = TopicAction(message = friendly(e)),
+                )
+            }
+        }
+    }
+
+    /**
+     * 置顶自己的主题。需要 PRO，没开会员时服务端返回 403，
+     * 错误会以提示条的形式显示在帖子页顶部。
+     */
+    fun setSticky(duration: String) {
+        if (!permissions.canManage(_topic.value.topic)) return
+        val id = _topic.value.topic?.id ?: return
+        runTopicAction("已置顶（$duration）") { api.setSticky(id, duration) }
+    }
+
+    /** 把自己的主题放到首页（PRO / 5 万 token / 1 万铜币，花 100 铜币）。 */
+    fun boostTopic() {
+        if (!permissions.canManage(_topic.value.topic)) return
+        val id = _topic.value.topic?.id ?: return
+        runTopicAction("已放到首页") { api.boost(id) }
+    }
+
+    fun dismissTopicAction() {
+        _topic.value = _topic.value.copy(action = null)
+    }
+
+    private fun runTopicAction(fallback: String, block: () -> String) {
+        val current = _topic.value
+        if (current.topic == null || current.action?.loading == true) return
+        _topic.value = current.copy(action = TopicAction(loading = true))
+        viewModelScope.launch {
+            try {
+                val message = withContext(Dispatchers.IO) { block() }
+                _topic.value = _topic.value.copy(
+                    action = TopicAction(message = message.ifBlank { fallback }, ok = true),
+                )
+            } catch (e: Exception) {
+                _topic.value = _topic.value.copy(
+                    action = TopicAction(message = friendly(e), ok = false),
+                )
+            }
+        }
+    }
+
+    private suspend fun recordHistory(topic: Topic) {
+        // 拿到正文才算看过：加载失败的不进浏览历史
+        withContext(Dispatchers.IO) {
+            prefs.recordHistory(
+                HistoryEntry(
+                    id = topic.id,
+                    title = topic.title,
+                    nodeName = topic.node.name,
+                    nodeTitle = topic.node.title,
+                    author = topic.member.username,
+                    replies = topic.replies,
+                    viewedAt = System.currentTimeMillis(),
+                )
+            )
         }
     }
 
@@ -410,14 +620,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --------------------------------------------------------------- account
     fun loadNotices() {
+        loadNoticesPage(1)
+    }
+
+    private fun loadNoticesPage(page: Int) {
         if (tokenValue.isBlank()) return
         _notices.value = _notices.value.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
-                val list = withContext(Dispatchers.IO) { api.notices() }
-                _notices.value = NoticesUi(loading = false, items = list)
+                val (list, info) = withContext(Dispatchers.IO) { api.notices(page) }
+                _notices.value = NoticesUi(
+                    loading = false,
+                    items = list,
+                    page = page,
+                    canLoadMore = info.hasMore(page),
+                )
             } catch (e: Exception) {
                 _notices.value = _notices.value.copy(loading = false, error = friendly(e))
+            }
+        }
+    }
+
+    /** 提醒翻页：v2 每页 20 条，底部「加载更多」触发。 */
+    fun loadMoreNotices() {
+        val current = _notices.value
+        if (current.moreLoading || !current.canLoadMore) return
+        _notices.value = current.copy(moreLoading = true)
+        viewModelScope.launch {
+            try {
+                val next = current.page + 1
+                val (list, info) = withContext(Dispatchers.IO) { api.notices(next) }
+                val seen = current.items.map { it.id }.toSet()
+                _notices.value = current.copy(
+                    items = current.items + list.filterNot { it.id in seen },
+                    page = next,
+                    moreLoading = false,
+                    canLoadMore = info.hasMore(next),
+                )
+            } catch (e: Exception) {
+                _notices.value = current.copy(moreLoading = false, error = friendly(e))
             }
         }
     }
@@ -459,23 +700,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadMe() {
         if (tokenValue.isBlank()) return
+        val request = ++identityRequest
+        val requestedToken = tokenValue
         _me.value = _me.value.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
                 val me = withContext(Dispatchers.IO) { api.me() }
-                _me.value = MeUi(loading = false, me = me)
+                if (request != identityRequest || requestedToken != tokenValue) return@launch
+                if (me.id > 0 && me.username.isNotBlank()) {
+                    prefs.rememberUser(requestedToken, me.username, me.avatar)
+                }
+                if (request != identityRequest || requestedToken != tokenValue) return@launch
+                _me.value = _me.value.copy(
+                    loading = false,
+                    me = me,
+                    // me() 内部已经问过 /token，这里直接拼出展示用的令牌信息，省一次请求
+                    tokenInfo = if (me.tokenDays > 0 || me.tokenTotalUsed > 0 || me.tokenScope != "-") {
+                        TokenInfo(
+                            scope = me.tokenScope,
+                            expiration = me.tokenExpiration,
+                            goodForDays = me.tokenDays,
+                            totalUsed = me.tokenTotalUsed,
+                        )
+                    } else {
+                        null
+                    },
+                )
             } catch (e: Exception) {
-                _me.value = MeUi(loading = false, error = friendly(e))
+                if (request == identityRequest && requestedToken == tokenValue) {
+                    _me.value = _me.value.copy(loading = false, error = friendly(e))
+                }
             }
         }
     }
 
+    /**
+     * 在 App 内创建新令牌（POST /token）。新令牌明文只在这次响应里出现，
+     * 必须让用户当场复制；关掉对话框后就再也看不到了。
+     */
+    fun createToken(scope: String, expirationSeconds: Int) {
+        if (!permissions.canCreateToken || _me.value.creatingToken) return
+        _me.value = _me.value.copy(creatingToken = true, createError = null)
+        viewModelScope.launch {
+            try {
+                val created = withContext(Dispatchers.IO) { api.createToken(scope, expirationSeconds) }
+                _me.value = _me.value.copy(creatingToken = false, createdToken = created)
+            } catch (e: Exception) {
+                _me.value = _me.value.copy(creatingToken = false, createError = friendly(e))
+            }
+        }
+    }
+
+    fun dismissCreatedToken() {
+        _me.value = _me.value.copy(createdToken = null, createError = null)
+    }
+
     fun saveToken(value: String) {
+        if (value.trim() != tokenValue) {
+            identityRequest++
+            _me.value = MeUi()
+            _rememberedUser.value = RememberedUser()
+        }
         viewModelScope.launch {
             prefs.setToken(value)
             if (value.isBlank()) {
                 _me.value = MeUi(loading = false)
                 _notices.value = NoticesUi()
+                _rateLimit.value = null
             }
             refreshHome()
         }

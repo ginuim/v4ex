@@ -50,9 +50,9 @@ fun EmptyArtCanvas(art: EmptyArt, modifier: Modifier = Modifier) {
     // stroke = 主体描边（最深的灰，但不至于用纯黑，免得比正文还抢眼）
     // fill   = 主体内部的浅灰实心，负责「有体积感」
     // hair   = 更淡的辅助线（阴影、细节、装饰点）
-    val stroke = Color(0xFF9A9A9F)
-    val fill = Color(0xFFF0EFEC)
-    val hair = Color(0xFFD8D7D3)
+    val stroke = Ink.ArtStroke
+    val fill = Ink.ArtFill
+    val hair = Ink.ArtHair
 
     Canvas(modifier.size(width = 132.dp, height = 104.dp)) {
         val w = size.width

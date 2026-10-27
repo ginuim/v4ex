@@ -135,9 +135,9 @@ fun ShareSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        containerColor = Color.White,
+        containerColor = Ink.Elevated,
         contentColor = Ink.Primary,
-        scrimColor = Color.Black.copy(alpha = 0.32f),
+        scrimColor = Ink.Scrim,
         dragHandle = { SheetHandle() },
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {

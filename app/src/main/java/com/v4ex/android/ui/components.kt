@@ -111,6 +111,7 @@ fun TopicRow(
     topic: Topic,
     read: Boolean = false,
     onAuthor: (() -> Unit)? = null,
+    showNode: Boolean = true,
     onClick: () -> Unit,
 ) {
     Row(
@@ -142,17 +143,31 @@ fun TopicRow(
                 Text(Time.ago(topic.created), fontSize = 12.sp, color = Ink.Tertiary)
             }
             Spacer(Modifier.height(3.dp))
-            Text(
-                text = buildString {
-                    append("/go/").append(topic.node.name)
-                    append(" · ").append(topic.replies).append(" 回复")
-                    if (topic.lastReplyBy.isNotBlank()) append(" · @").append(topic.lastReplyBy)
-                },
-                fontSize = 13.sp,
-                color = Ink.Secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (showNode && topic.node.name.isNotBlank()) {
+                    Text(
+                        topic.node.name,
+                        Modifier.widthIn(max = 140.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(Ink.ChipBg)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                }
+                Text(
+                    text = buildString {
+                        append(topic.replies).append(" 回复")
+                        if (topic.lastReplyBy.isNotBlank()) append(" · @").append(topic.lastReplyBy)
+                    },
+                    modifier = Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    color = Ink.Secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -221,7 +236,7 @@ fun BottomBar(selected: Int, unread: Int, onSelect: (Int) -> Unit) {
     )
     Surface(
         shape = RoundedCornerShape(30.dp),
-        color = Color.White.copy(alpha = 0.97f),
+        color = Ink.Elevated.copy(alpha = 0.97f),
         shadowElevation = 12.dp,
     ) {
         Row(
@@ -253,7 +268,7 @@ fun BottomBar(selected: Int, unread: Int, onSelect: (Int) -> Unit) {
                                 .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
                                 .clip(CircleShape)
                                 .background(Ink.Badge)
-                                .border(1.5.dp, Color.White, CircleShape),
+                                .border(1.5.dp, Ink.Elevated, CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
@@ -261,7 +276,7 @@ fun BottomBar(selected: Int, unread: Int, onSelect: (Int) -> Unit) {
                                 modifier = Modifier.padding(horizontal = 4.dp),
                                 fontSize = 10.sp,
                                 lineHeight = 10.sp,
-                                color = Color.White,
+                                color = Ink.OnBadge,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }

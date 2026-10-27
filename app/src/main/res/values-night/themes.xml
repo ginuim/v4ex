@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.V4ex" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF151517</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -7,19 +7,47 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private val Context.store by preferencesDataStore("v4ex")
 
+data class RememberedUser(val username: String = "", val avatar: String? = null)
+
 class Prefs(private val context: Context) {
+    private val themeKey = stringPreferencesKey("theme_mode")
+    val themeMode: Flow<String> = context.store.data.map { it[themeKey] ?: "SYSTEM" }
+    suspend fun setThemeMode(value: String) { context.store.edit { it[themeKey] = value } }
+
     private val tokenKey = stringPreferencesKey("pat")
+    private val usernameKey = stringPreferencesKey("remembered_username")
+    private val avatarKey = stringPreferencesKey("remembered_avatar")
     private val readKey = stringPreferencesKey("read_ids")
     private val favNodesKey = stringPreferencesKey("fav_nodes")
     private val historyKey = stringPreferencesKey("history")
+    private val hotCollapsedDayKey = stringPreferencesKey("hot_collapsed_day")
+    val hotCollapsedDay: Flow<String> = context.store.data.map { it[hotCollapsedDayKey].orEmpty() }
+    suspend fun setHotCollapsedDay(day: String) { context.store.edit { it[hotCollapsedDayKey] = day } }
+
     private val unreadOnlyKey = booleanPreferencesKey("unread_only")
     private val replyThreadedKey = booleanPreferencesKey("reply_threaded")
     private val homeCacheKey = stringPreferencesKey("home_cache")
 
-    val token: Flow<String> = context.store.data.map { it[tokenKey].orEmpty() }
+    val token: Flow<String> = context.store.data.map { it[tokenKey].orEmpty() }.distinctUntilChanged()
+
+    val rememberedUser: Flow<RememberedUser> = context.store.data.map {
+        if (it[tokenKey].isNullOrBlank()) RememberedUser()
+        else RememberedUser(it[usernameKey].orEmpty(), it[avatarKey])
+    }.distinctUntilChanged()
+
+    suspend fun rememberUser(token: String, username: String, avatar: String?) {
+        if (username.isBlank()) return
+        context.store.edit { prefs ->
+            if (prefs[tokenKey].orEmpty() == token) {
+                prefs[usernameKey] = username
+                if (avatar.isNullOrBlank()) prefs.remove(avatarKey) else prefs[avatarKey] = avatar
+            }
+        }
+    }
 
     /** 首页「只看未读」。记住用户的选择，下次打开还是这个状态。 */
     val unreadOnly: Flow<Boolean> = context.store.data.map { it[unreadOnlyKey] ?: false }
@@ -124,7 +152,14 @@ class Prefs(private val context: Context) {
     ).joinToString(SEP.toString())
 
     suspend fun setToken(value: String) {
-        context.store.edit { it[tokenKey] = value.trim() }
+        context.store.edit { prefs ->
+            val token = value.trim()
+            if (prefs[tokenKey].orEmpty() != token) {
+                prefs.remove(usernameKey)
+                prefs.remove(avatarKey)
+            }
+            prefs[tokenKey] = token
+        }
     }
 
     suspend fun toggleFavNode(name: String, title: String) {
@@ -159,9 +194,9 @@ class Prefs(private val context: Context) {
         context.store.edit { it.remove(readKey) }
     }
 
-    private companion object {
-        const val MAX_READ = 800
-        const val MAX_HISTORY = 300
-        const val SEP = '\u001F'
+    companion object {
+        private const val MAX_READ = 800
+        const val MAX_HISTORY = 3000
+        private const val SEP = '\u001F'
     }
 }

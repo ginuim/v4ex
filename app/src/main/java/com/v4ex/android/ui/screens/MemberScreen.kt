@@ -1,5 +1,8 @@
 package com.v4ex.android.ui.screens
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.MemberProfile
 import com.v4ex.android.data.Time
+import com.v4ex.android.ui.ProBadge
 import com.v4ex.android.ui.Avatar
 import com.v4ex.android.ui.EmptyArt
 import com.v4ex.android.ui.EmptyState
@@ -95,16 +99,7 @@ fun MemberScreen(
                             )
                             if (profile.pro) {
                                 Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "PRO",
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Ink.Primary)
-                                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                                    fontSize = 9.5.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
+                                ProBadge()
                             }
                         }
                         if (profile.tagline.isNotBlank()) {
@@ -126,7 +121,7 @@ fun MemberScreen(
 
                 Spacer(Modifier.height(12.dp))
                 SectionLabel("资料")
-                ProfileRow("注册于", Time.date(profile.created))
+                if (profile.created > 0) ProfileRow("注册于", Time.date(profile.created))
                 if (profile.location.isNotBlank()) ProfileRow("位置", profile.location)
                 if (profile.website.isNotBlank()) {
                     ProfileRow("网站", profile.website, onClick = {
@@ -138,7 +133,19 @@ fun MemberScreen(
                         uriHandler.openUri("https://github.com/${profile.github}")
                     })
                 }
-                ProfileRow("会员 id", profile.id.toString())
+                if (profile.url.isNotBlank()) {
+                    ProfileRow("个人主页", profile.url) { uriHandler.openUri(normalizeUrl(profile.url)) }
+                }
+                if (profile.twitter.isNotBlank()) {
+                    ProfileRow("Twitter", profile.twitter) {
+                        val handle = profile.twitter.trim().removePrefix("@")
+                        uriHandler.openUri(if (handle.startsWith("https://") || handle.startsWith("http://")) handle else "https://twitter.com/$handle")
+                    }
+                }
+                ProfileRow("PSN", profile.psn)
+                ProfileRow("BTC 地址", profile.btc)
+                if (profile.lastModified > 0) ProfileRow("资料更新于", Time.date(profile.lastModified))
+                if (profile.id > 0) ProfileRow("会员 ID", profile.id.toString())
 
                 Spacer(Modifier.height(22.dp))
                 Text(
@@ -157,20 +164,25 @@ fun MemberScreen(
 
 @Composable
 private fun ProfileRow(label: String, value: String, onClick: (() -> Unit)? = null) {
+    if (value.isBlank()) return
     Row(
         Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 22.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(label, fontSize = 14.sp, color = Ink.Secondary)
-        Spacer(Modifier.weight(1f))
-        Text(
-            value,
-            fontSize = 14.sp,
-            color = if (onClick != null) Ink.Blue else Ink.Primary,
-        )
+        SelectionContainer(Modifier.weight(1f)) {
+            Text(
+                value,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.End,
+                fontSize = 14.sp,
+                color = if (onClick != null) Ink.Blue else Ink.Primary,
+            )
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.v4ex.android.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.HistoryEntry
 import com.v4ex.android.data.HistoryGroup
+import com.v4ex.android.data.Prefs
 import com.v4ex.android.data.Time
 import com.v4ex.android.ui.EmptyArt
 import com.v4ex.android.ui.EmptyState
@@ -105,6 +109,14 @@ fun HistoryScreen(
                     HistoryRow(entry, onClick = { onOpen(entry) }, onRemove = { onRemove(entry.id) })
                 }
             }
+            item(key = "history-limit") {
+                Text(
+                    text = "最多保留 ${Prefs.MAX_HISTORY} 条，超出后自动移除最早的记录",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
+                    fontSize = 12.sp,
+                    color = Ink.Tertiary,
+                )
+            }
             item { Spacer(Modifier.height(110.dp)) }
         }
     }
@@ -144,22 +156,36 @@ private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit, onRemove: () ->
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                buildString {
-                    if (entry.nodeName.isNotBlank()) append("/go/").append(entry.nodeName)
-                    if (entry.author.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (entry.nodeName.isNotBlank()) {
+                    Text(
+                        entry.nodeName,
+                        Modifier.widthIn(max = 140.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(Ink.ChipBg)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                }
+                Text(
+                    buildString {
+                        if (entry.author.isNotBlank()) append("@").append(entry.author)
+                        if (entry.replies > 0) {
+                            if (isNotEmpty()) append(" · ")
+                            append(entry.replies).append(" 回复")
+                        }
                         if (isNotEmpty()) append(" · ")
-                        append("@").append(entry.author)
-                    }
-                    if (entry.replies > 0) append(" · ").append(entry.replies).append(" 回复")
-                    if (isNotEmpty()) append(" · ")
-                    append(Time.ago(entry.viewedAt)).append("看过")
-                },
-                fontSize = 12.5.sp,
-                color = Ink.Secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+                        append(Time.ago(entry.viewedAt)).append("看过")
+                    },
+                    modifier = Modifier.weight(1f),
+                    fontSize = 12.5.sp,
+                    color = Ink.Secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(6.dp))
         // 单项删除，避免误点整行就清掉

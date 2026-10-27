@@ -31,6 +31,7 @@ import com.v4ex.android.data.Notice
 import com.v4ex.android.ui.EmptyArt
 import com.v4ex.android.ui.EmptyState
 import com.v4ex.android.ui.ErrorLine
+import com.v4ex.android.ui.ListFooter
 import com.v4ex.android.ui.NoticeRow
 import com.v4ex.android.ui.theme.Ink
 
@@ -40,7 +41,10 @@ fun NoticesScreen(
     items: List<Notice>,
     loading: Boolean,
     error: String?,
+    moreLoading: Boolean,
+    canLoadMore: Boolean,
     onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onAuth: () -> Unit,
     onAuthor: (String) -> Unit,
     onOpenTopic: (Notice) -> Unit,
@@ -97,6 +101,14 @@ fun NoticesScreen(
                         onClick = { onOpenTopic(notice) },
                     )
                 }
+                item {
+                    ListFooter(
+                        canLoadMore = canLoadMore,
+                        loading = moreLoading,
+                        hint = null,
+                        onLoadMore = onLoadMore,
+                    )
+                }
                 item { Spacer(Modifier.height(110.dp)) }
             }
         }
@@ -123,7 +135,7 @@ private fun AuthGate(onAuth: () -> Unit) {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text("填写令牌", fontSize = 14.sp, color = androidx.compose.ui.graphics.Color.White)
+            Text("填写令牌", fontSize = 14.sp, color = Ink.OnPrimary)
         }
         Spacer(Modifier.height(10.dp))
         Text(

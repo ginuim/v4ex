@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.v4ex.android.ui.AppViewModel
+import com.v4ex.android.ui.PublishDialog
 import com.v4ex.android.ui.BottomBar
 import com.v4ex.android.ui.screens.HistoryScreen
 import com.v4ex.android.ui.screens.HomeScreen
@@ -53,8 +54,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            V4exTheme {
-                V4exApp()
+            val vm: AppViewModel = viewModel()
+            val themeMode by vm.themeMode.collectAsStateWithLifecycle()
+            V4exTheme(mode = themeMode) {
+                V4exApp(vm)
             }
         }
     }
@@ -69,18 +72,34 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     val member by vm.member.collectAsStateWithLifecycle()
     val notices by vm.notices.collectAsStateWithLifecycle()
     val me by vm.me.collectAsStateWithLifecycle()
+    val rememberedUser by vm.rememberedUser.collectAsStateWithLifecycle()
     val token by vm.token.collectAsStateWithLifecycle()
     val favNodes by vm.favNodes.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val historyLoaded by vm.historyLoaded.collectAsStateWithLifecycle()
+    val hotCollapsedDay by vm.hotCollapsedDay.collectAsStateWithLifecycle()
     val unreadOnly by vm.unreadOnly.collectAsStateWithLifecycle()
     val threaded by vm.threaded.collectAsStateWithLifecycle()
+    val rateLimit by vm.rateLimit.collectAsStateWithLifecycle()
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var openTopic by rememberSaveable { mutableStateOf<Int?>(null) }
     var openNode by rememberSaveable { mutableStateOf<String?>(null) }
     var openMember by rememberSaveable { mutableStateOf<String?>(null) }
     var openHistory by rememberSaveable { mutableStateOf(false) }
+    var composeOpen by rememberSaveable { mutableStateOf(false) }
+    var replyTo by rememberSaveable { mutableStateOf<Int?>(null) }
+    val publish by vm.publish.collectAsStateWithLifecycle()
+    LaunchedEffect(publish.completedTopicId) {
+        publish.completedTopicId?.let { id ->
+            val wasReply = replyTo != null
+            composeOpen = false
+            replyTo = null
+            openTopic = id
+            if (wasReply) vm.loadTopic(id)
+            vm.resetPublish()
+        }
+    }
     var authDialog by remember { mutableStateOf(false) }
     val homeList = rememberLazyListState()
     val readIds by vm.readIds.collectAsStateWithLifecycle()
@@ -89,6 +108,13 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     val context = LocalContext.current
 
     val hasToken = (token ?: "").isNotBlank()
+    val permissions = vm.permissions
+    LaunchedEffect(permissions.canPublish) {
+        if (!permissions.canPublish && !publish.sending) {
+            composeOpen = false
+            replyTo = null
+        }
+    }
 
     LaunchedEffect(openTopic) {
         openTopic?.let { vm.loadTopic(it) }
@@ -138,14 +164,33 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     replies = topic.replies,
                     error = topic.error,
                     threaded = threaded,
+                    canReply = permissions.canPublish,
+                    canManage = permissions.canManage(topic.topic),
+                    repliesPaged = topic.repliesPaged,
+                    moreRepliesLoading = topic.moreRepliesLoading,
+                    hasMoreReplies = topic.hasMoreReplies,
+                    action = topic.action,
                     onToggleThreaded = { vm.setThreaded(!threaded) },
                     onBack = { openTopic = null },
                     onRetry = { openTopic?.let { vm.loadTopic(it) } },
                     onAuthor = { openMember = it },
+                    onLoadMoreReplies = vm::loadMoreReplies,
+                    onSticky = vm::setSticky,
+                    onBoost = vm::boostTopic,
+                    onDismissAction = vm::dismissTopicAction,
+                    onReply = {
+                        if (permissions.canPublish) {
+                            vm.resetPublish()
+                            replyTo = topic.topic?.id
+                            composeOpen = replyTo != null
+                        }
+                    },
                 )
 
                 openNode != null -> NodeTopicsScreen(
-                    node = nodeState.node,
+                    node = openNode.orEmpty(),
+                    nodeTitle = nodes.nodes.firstOrNull { it.name == openNode }?.title
+                        ?: favNodes.firstOrNull { it.first == openNode }?.second.orEmpty(),
                     topics = nodeState.topics,
                     readIds = readIds,
                     loading = nodeState.loading,
@@ -157,6 +202,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onTopic = { openTopic = it.id },
                     onRetry = { openNode?.let { vm.loadNodeTopics(it) } },
                     onLoadMore = vm::loadMoreNodeTopics,
+                    detail = nodeState.detail,
                 )
 
                 // 浏览历史压在帖子/节点页下面：从历史点进帖子时它不关闭，
@@ -177,8 +223,11 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     readIds = readIds,
                     unreadOnly = unreadOnly,
                     onUnreadOnly = vm::setUnreadOnly,
+                    hotExpanded = hotCollapsedDay != java.time.LocalDate.now().toString(),
+                    onHotExpanded = vm::setHotExpanded,
                     nodeCount = nodes.nodes.size,
                     me = me.me,
+                    rememberedUser = rememberedUser,
                     refreshing = home.refreshing,
                     updating = home.updating,
                     cachedAt = home.cachedAt,
@@ -192,6 +241,14 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                         vm.loadMe()
                     },
                     onLoadMore = vm::loadMoreLatest,
+                    canCompose = permissions.canPublish,
+                    onCompose = {
+                        if (permissions.canPublish) {
+                            vm.resetPublish()
+                            replyTo = null
+                            composeOpen = true
+                        }
+                    },
                     onAuthor = { openMember = it },
                 )
 
@@ -211,7 +268,10 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     items = notices.items,
                     loading = notices.loading,
                     error = notices.error,
+                    moreLoading = notices.moreLoading,
+                    canLoadMore = notices.canLoadMore,
                     onRefresh = vm::loadNotices,
+                    onLoadMore = vm::loadMoreNotices,
                     onAuth = { authDialog = true },
                     onAuthor = { if (it.isNotBlank()) openMember = it },
                     onClearAll = vm::clearAllNotices,
@@ -237,14 +297,24 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     me = me.me,
                     error = me.error,
                     historyCount = history.size,
+                    tokenInfo = me.tokenInfo,
+                    rateLimit = rateLimit,
+                    creatingToken = me.creatingToken,
+                    canCreateToken = permissions.canCreateToken,
+                    createdToken = me.createdToken,
+                    createError = me.createError,
                     onOpenHistory = { openHistory = true },
                     onAuth = { authDialog = true },
                     onSignOut = { vm.saveToken("") },
+                    onCreateToken = { scope, seconds -> vm.createToken(scope, seconds) },
+                    onDismissCreate = vm::dismissCreatedToken,
+                    themeMode = vm.themeMode.collectAsStateWithLifecycle().value,
+                    onThemeMode = vm::setThemeMode,
                 )
             }
         }
 
-        if (openTopic == null && openNode == null && openMember == null) {
+        if (openTopic == null && openNode == null && openMember == null && !openHistory) {
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -266,6 +336,28 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                 )
             }
         }
+    }
+
+    LaunchedEffect(composeOpen, replyTo) {
+        if (composeOpen && replyTo == null) vm.loadNodes()
+    }
+
+    if (composeOpen && (permissions.canPublish || publish.sending)) {
+        PublishDialog(
+            replyTopicId = replyTo,
+            nodes = nodes.nodes,
+            nodesLoading = nodes.loading,
+            nodesError = nodes.error,
+            onReloadNodes = { vm.loadNodes(force = true) },
+            sending = publish.sending,
+            error = publish.error,
+            onDismiss = { composeOpen = false; vm.resetPublish() },
+            onPublish = { node, title, content, syntax ->
+                val id = replyTo
+                if (id == null) vm.publishTopic(node, title, content, syntax)
+                else vm.publishReply(id, content)
+            },
+        )
     }
 
     if (authDialog) {

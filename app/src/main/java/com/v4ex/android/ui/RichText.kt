@@ -3,12 +3,14 @@ package com.v4ex.android.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -16,8 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,24 +37,31 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.AnnotatedString.Builder
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImagePainter
+import coil.compose.LocalImageLoader
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Dimension
 import coil.size.Precision
 import coil.size.Size
 import com.v4ex.android.ui.theme.Ink
+import com.v4ex.android.ui.theme.LightTokens
 import kotlin.math.roundToInt
 
 /** V2EX 正文/回复的最小 Markdown 子集，够用就好。 */
@@ -58,7 +73,63 @@ sealed interface MdBlock {
     data class Bullet(val text: AnnotatedString, val number: Int?) : MdBlock
     data class Image(val url: String, val alt: String) : MdBlock
     data object Rule : MdBlock
+
+    /**
+     * 段落里的一张图，位置是 [text] 中的 start..end（一个占位符）。
+     * 渲染时先解码看原始尺寸：够小就按行内表情画在 [text] 里、跟着文字走；
+     * 否则退化成一张独占一行的 [Image]。
+     */
+    data class InlineImage(
+        val text: AnnotatedString,
+        val start: Int,
+        val end: Int,
+        val url: String,
+    ) : MdBlock
 }
+
+/** 行内表情的宽度上限（px）：V2EX 的表情是 20~32px 的小图，再大就不当表情了。 */
+internal const val EmojiMaxWidthPx = 64
+
+/** 段落里的图片在纯文本里的占位符：先占位、再在 styled 文本里找回它的位置。 */
+internal const val EMOJI_PLACEHOLDER = '\uFFFC'
+
+/** 段落里的一张图：URL 及它在渲染文本里的占位位置。 */
+internal data class ImageMark(
+    val url: String,
+    val placeholderStart: Int,
+    val placeholderEnd: Int,
+    val isEmoji: Boolean = false,
+)
+
+/** 段落里所有占位符的位置，按出现顺序。 */
+internal fun placeholderRanges(text: String): List<IntRange> {
+    val out = mutableListOf<IntRange>()
+    var i = text.indexOf(EMOJI_PLACEHOLDER)
+    while (i >= 0) {
+        out += i..i
+        i = text.indexOf(EMOJI_PLACEHOLDER, i + 1)
+    }
+    return out
+}
+
+/**
+ * 把段落里的图片落到占位符上：第 n 张图 = 第 n 个占位符。
+ * 占位符不够时多出来的图直接丢弃——宁可少画一张，也不要把表情错配到别的位置。
+ * 纯函数，单测覆盖。
+ */
+internal fun foldInlineImages(slots: List<IntRange>, urls: List<String>): List<ImageMark> =
+    urls.mapIndexedNotNull { index, url ->
+        val slot = slots.getOrNull(index) ?: return@mapIndexedNotNull null
+        ImageMark(url = url, placeholderStart = slot.first, placeholderEnd = slot.last)
+    }
+
+/**
+ * 是不是「表情」而不是一张正文图片：行内图片的原始像素宽度不超过 [EmojiMaxWidthPx]
+ * 就当表情，跟着文字排；尺寸未知时按「不是表情」处理，走原来的独立图片渲染。
+ * 纯函数，单测覆盖。
+ */
+internal fun isInlineEmoji(naturalWidthPx: Int?): Boolean =
+    naturalWidthPx != null && naturalWidthPx in 1..EmojiMaxWidthPx
 
 // V2EX 导出的 Markdown 括号里常带空格：![]( https://x/y.png) / [文本]( https://x)，
 // 所以一律允许括号内首尾有空白，URL 本身再 trim。
@@ -68,21 +139,25 @@ private val IMAGE_RE = Regex(
 private val BULLET_RE = Regex("^[-*+]\\s+")
 private val ORDERED_RE = Regex("^(\\d{1,3})[.)]\\s+")
 private val INLINE_RE = Regex(
-    """(\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+]\(\s*[^)\s]+\s*\)|https?://[^\s，。；）)]+)"""
+    """(!\[[^\]\n]*]\(\s*[^)\s]+\s*\)|\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+]\(\s*[^)\s]+\s*\)|https?://[^\s，。；）)]+)"""
 )
 
-private fun inline(src: String, linkColor: Color): AnnotatedString = buildAnnotatedString {
+private fun inline(src: String, linkColor: Color, codeBackground: Color): AnnotatedString = buildAnnotatedString {
     var index = 0
     for (m in INLINE_RE.findAll(src)) {
         if (m.range.first > index) append(src.substring(index, m.range.first))
         val token = m.value
         when {
+            // 图片不在这里处理：段落里的图片由 flushParagraph 先切成 InlineImage / Image，
+            // 否则 ![](url) 会落进「裸链接」分支，把图片当链接显示成一串文字。
+            token.startsWith("![") -> {}
+
             token.startsWith("**") -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
                 append(token.removeSurrounding("**"))
             }
 
             token.startsWith("`") -> withStyle(
-                SpanStyle(fontFamily = FontFamily.Monospace, background = Ink.ChipBg),
+                SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground),
             ) { append(token.trim('`')) }
 
             token.startsWith("[") -> {
@@ -111,7 +186,7 @@ private fun inline(src: String, linkColor: Color): AnnotatedString = buildAnnota
     if (index < src.length) append(src.substring(index))
 }
 
-fun parseMarkdown(raw: String, linkColor: Color = Ink.Blue): List<MdBlock> {
+fun parseMarkdown(raw: String, linkColor: Color = LightTokens.Blue, codeBackground: Color = LightTokens.ChipBg): List<MdBlock> {
     val text = raw.replace("\r\n", "\n").replace('\r', '\n')
     val out = mutableListOf<MdBlock>()
     val lines = text.split('\n')
@@ -122,22 +197,37 @@ fun parseMarkdown(raw: String, linkColor: Color = Ink.Blue): List<MdBlock> {
         val s = para.toString().trim()
         para.setLength(0)
         if (s.isEmpty()) return
-        // 一段里可能混着图片，图片单独成块
+        // 段落里的图片先换成一个占位符，段落按「图文混排」统一处理：
+        // 表情（很小的行内图）跟着文字走，正文图片独占一行。
+        val urls = mutableListOf<String>()
+        val withSlots = StringBuilder()
         var last = 0
         for (m in IMAGE_RE.findAll(s)) {
-            val before = s.substring(last, m.range.first).trim()
-            if (before.isNotEmpty()) out += MdBlock.Para(inline(before, linkColor))
-            val mdUrl = m.groupValues[2].trim()
-            val bareUrl = m.groupValues[3]
-            if (mdUrl.isNotEmpty()) {
-                out += MdBlock.Image(mdUrl, m.groupValues[1])
-            } else if (bareUrl.isNotEmpty()) {
-                out += MdBlock.Image(bareUrl, "")
-            }
+            val url = m.groupValues[2].trim().ifEmpty { m.groupValues[3] }
+            if (url.isEmpty()) continue
+            withSlots.append(s, last, m.range.first).append(EMOJI_PLACEHOLDER)
+            urls += url
             last = m.range.last + 1
         }
-        val tail = s.substring(last).trim()
-        if (tail.isNotEmpty()) out += MdBlock.Para(inline(tail, linkColor))
+        withSlots.append(s, last, s.length)
+        val styled = inline(withSlots.toString(), linkColor, codeBackground)
+
+        if (urls.isEmpty()) {
+            out += MdBlock.Para(styled)
+            return
+        }
+        // 只有一张图、除了它什么字都没有 → 正文图片，单独成块。
+        val loneImage = urls.singleOrNull()
+        if (loneImage != null && styled.text.replace(EMOJI_PLACEHOLDER.toString(), "").isBlank()) {
+            out += MdBlock.Image(loneImage, "")
+            return
+        }
+        // 图文混排：每张图一个 InlineImage，指向同一段 styled 文本里的占位位置。
+        val marks = foldInlineImages(placeholderRanges(styled.text), urls)
+        if (marks.isEmpty()) out += MdBlock.Para(styled)
+        for (mark in marks) {
+            out += MdBlock.InlineImage(styled, mark.placeholderStart, mark.placeholderEnd, mark.url)
+        }
     }
 
     while (i < lines.size) {
@@ -162,25 +252,25 @@ fun parseMarkdown(raw: String, linkColor: Color = Ink.Blue): List<MdBlock> {
                     quote.appendLine(lines[i].trimStart().removePrefix(">").trim())
                     i++
                 }
-                out += MdBlock.Quote(inline(quote.toString().trimEnd(), linkColor))
+                out += MdBlock.Quote(inline(quote.toString().trimEnd(), linkColor, codeBackground))
                 continue
             }
 
             trimmed.startsWith("#") -> {
                 flushParagraph()
-                out += MdBlock.Heading(inline(trimmed.trimStart('#').trim(), linkColor))
+                out += MdBlock.Heading(inline(trimmed.trimStart('#').trim(), linkColor, codeBackground))
             }
 
             BULLET_RE.containsMatchIn(trimmed) -> {
                 flushParagraph()
-                out += MdBlock.Bullet(inline(trimmed.replaceFirst(BULLET_RE, ""), linkColor), null)
+                out += MdBlock.Bullet(inline(trimmed.replaceFirst(BULLET_RE, ""), linkColor, codeBackground), null)
             }
 
             ORDERED_RE.containsMatchIn(trimmed) -> {
                 flushParagraph()
                 val n = ORDERED_RE.find(trimmed)!!.groupValues[1]
                 out += MdBlock.Bullet(
-                    inline(trimmed.replaceFirst(ORDERED_RE, ""), linkColor),
+                    inline(trimmed.replaceFirst(ORDERED_RE, ""), linkColor, codeBackground),
                     n.toIntOrNull(),
                 )
             }
@@ -211,12 +301,22 @@ fun RichContent(
     fontSize: TextUnit = 15.sp,
     lineHeight: TextUnit = 25.sp,
     color: Color = Ink.Primary,
+    paragraphSpacing: Dp = 8.dp,
 ) {
-    val blocks = remember(text) { parseMarkdown(text) }
+    val linkColor = Ink.Blue
+    val codeBackground = Ink.ChipBg
+    val blocks = remember(text, linkColor, codeBackground) { parseMarkdown(text, linkColor, codeBackground) }
     val uriHandler = LocalUriHandler.current
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        blocks.forEach { block ->
+    Column(modifier) {
+        blocks.forEachIndexed { index, block ->
+            // 正文段落增加留白；连续列表项仍沿用紧凑的块间距。
+            if (index > 0) {
+                val previous = blocks[index - 1]
+                val bordersParagraph = previous is MdBlock.Para || previous is MdBlock.InlineImage ||
+                    block is MdBlock.Para || block is MdBlock.InlineImage
+                Spacer(Modifier.height(if (bordersParagraph) paragraphSpacing else 8.dp))
+            }
             when (block) {
                 is MdBlock.Para -> LinkText(block.text, uriHandler, fontSize, lineHeight, color)
 
@@ -277,6 +377,14 @@ fun RichContent(
                 )
 
                 is MdBlock.Image -> RichImage(block.url, block.alt, uriHandler)
+
+                is MdBlock.InlineImage -> InlineImageBlock(
+                    block = block,
+                    fontSize = fontSize,
+                    lineHeight = lineHeight,
+                    color = color,
+                    uriHandler = uriHandler,
+                )
             }
         }
     }
@@ -309,13 +417,143 @@ private fun LinkText(
     )
 }
 
+/** 图片解码高度相对容器宽度的上限：只为防超长图一次占满内存，普通图片用不到。 */
+private const val MaxImageAspect = 10
+
+/** 行内表情比字号略大，保持可辨认且不额外撑高正文行。 */
+private const val EmojiScale = 1.25f
+
+/** 尺寸未知时的临时占位宽度：约等于一个中文字宽，命中缓存后立即换成真实尺寸。 */
+private val EmojiFallbackSize = 20.dp
+
+/** emoji 在 `InlineTextContent` 里的占位 id；同一个段落里每张图都不同。 */
+private fun emojiSlot(url: String) = "emoji:$url"
+
+private fun imageRequest(context: android.content.Context, url: String, widthPx: Int): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url)
+        .size(Size(widthPx, Dimension.Pixels(widthPx * MaxImageAspect)))
+        // 注意：这里不要设 INEXACT 以外的精度，否则解码器会把小表情放大。
+        .precision(Precision.INEXACT)
+        .build()
+
+/** 同步查内存缓存：命中就返回原始尺寸，没命中返回 null。 */
+private fun cachedImageSize(loader: coil.ImageLoader, request: ImageRequest): IntSize? {
+    val key = request.memoryCacheKey ?: return null
+    val bitmap = loader.memoryCache?.get(key)?.bitmap ?: return null
+    if (bitmap.width <= 0 || bitmap.height <= 0) return null
+    return IntSize(bitmap.width, bitmap.height)
+}
+
+/**
+ * 段落里的一张图：先异步取一次尺寸（[probeSize]），再决定怎么排。
+ * - 已知且够小 → 行内表情，跟着文字走（InlineTextContent）；
+ * - 已知但太大 → 正文图片，独占一行，和以前一样；
+ * - 还没取到 → 先按「表情」的占位排：表情是行内小图，就算排错也只是一张小方框，
+ *   而正文图片按表情排错会变成一条细线，视觉上更糟。尺寸到手后如果确实是大图，
+ *   下一帧会换成独占一行。
+ */
+@Composable
+private fun InlineImageBlock(
+    block: MdBlock.InlineImage,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    color: Color,
+    uriHandler: UriHandler,
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val probeWidthPx = with(density) { EmojiFallbackSize.roundToPx() }
+    val probe = remember(block.url, probeWidthPx) { imageRequest(context, block.url, probeWidthPx) }
+    val natural = probeImageSize(block.url, probe)
+
+    // 尺寸未知时按表情排版（见上面的取舍）；明确是大图才退回独占一行。
+    val knownNotEmoji = natural != null && !isInlineEmoji(natural.width)
+    if (knownNotEmoji) {
+        RichImage(block.url, "", uriHandler)
+        return
+    }
+    InlineEmoji(block, fontSize, lineHeight, color, uriHandler)
+}
+
+/**
+ * 取图片的原始尺寸：先看内存缓存（同步），没有就挂起等一次真实加载。
+ * 结果按 URL 记住，同一个表情在多个楼层出现时只探一次。
+ */
+@Composable
+private fun probeImageSize(url: String, request: ImageRequest): IntSize? {
+    val loader = LocalImageLoader.current
+    val cached = remember(url) { cachedImageSize(loader, request) }
+    if (cached != null) return cached
+    var result by remember(url) { mutableStateOf<IntSize?>(null) }
+    LaunchedEffect(url) {
+        val size = runCatching {
+            val drawable = loader.execute(request).drawable ?: return@runCatching null
+            if (drawable.intrinsicWidth > 0) IntSize(drawable.intrinsicWidth, drawable.intrinsicHeight) else null
+        }.getOrNull()
+        if (size != null) result = size
+    }
+    return result
+}
+
+/** 像素表情放大时用高质量滤波，圆角方形比像素方块更耐看。 */
+@Composable
+private fun InlineEmoji(
+    block: MdBlock.InlineImage,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    color: Color,
+    uriHandler: UriHandler,
+) {
+    val density = LocalDensity.current
+    val size = (fontSize.value * EmojiScale).sp
+    val sidePx = with(density) { size.toDp().roundToPx() }
+    val painter = rememberAsyncImagePainter(
+        imageRequest(LocalContext.current, block.url, sidePx),
+    )
+    val slot = remember(block.url) { emojiSlot(block.url) }
+    val inlineContent = remember(slot, painter, size, uriHandler) {
+        mapOf(
+            slot to InlineTextContent(
+                Placeholder(
+                    width = size,
+                    height = size,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                ),
+            ) {
+                // 行内子项只有最大尺寸约束，必须填满占位；否则 20px 原图会按物理像素
+                // 缩在占位左上角，在高密度屏上显得很小且偏上。
+                Image(
+                    painter = painter,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { uriHandler.openUri(block.url) },
+                )
+            },
+        )
+    }
+    val shown = remember(block.text, block.start, block.end, slot) {
+        buildAnnotatedString {
+            append(block.text.subSequence(0, block.start))
+            // alternateText 不允许为空串（Compose 会直接抛 IllegalArgumentException 崩溃），
+            // 无障碍读屏也正好拿它当表情的描述。
+            appendInlineContent(slot, "表情")
+            append(block.text.subSequence(block.end + 1, block.text.length))
+        }
+    }
+    BasicText(
+        text = shown,
+        style = TextStyle(fontSize = fontSize, lineHeight = lineHeight, color = color),
+        inlineContent = inlineContent,
+    )
+}
+
 @Composable
 private fun Spacer2() {
     androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
 }
-
-/** 图片解码高度相对容器宽度的上限：只为防超长图一次占满内存，普通图片用不到。 */
-private const val MaxImageAspect = 10
 
 private val ImageLoadingHeight = 150.dp
 private val ImageErrorHeight = 84.dp
