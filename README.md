@@ -132,6 +132,8 @@ macOS 可用 `base64 -i /你的路径/release.jks | pbcopy` 将编码复制到�
 
 签名 Secret 缺失或签名无效时任务失败，不上传未签名包。修复后可在 Actions 重跑，同名附件会被替换。仓库须允许 Actions 运行；此流程需要向 Release 写入附件，不能用于已经锁定附件的不可变 Release。构建及上传状态在 Actions 的 **Release APK** 查看。
 
+如需用修复后的工作流重新构建已有 Release，可在 Actions 中手动运行 **Release APK**，填写已有的 release tag；源码仍从该 tag 检出。
+
 纯函数单测（分享文案 / 对话归组，不需要模拟器）：
 
 ```bash
