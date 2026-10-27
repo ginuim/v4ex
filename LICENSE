@@ -1,21 +1,39 @@
-MIT License
+V4EX Non-Commercial License 1.0
 
 Copyright (c) 2026 ginuim
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Permission
+Subject to the conditions below, permission is granted, free of charge, to
+use, copy, modify, and redistribute this software and its documentation
+(the "Software"), in source or binary form, solely for non-commercial purposes.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. No commercial use
+Commercial use is prohibited without prior written permission from the
+copyright holder. Commercial use includes selling, licensing for a fee,
+paid distribution, advertising-supported or subscription-supported products
+or services, use in commercial products or services, and use for business
+operations or other purposes primarily intended for commercial advantage
+or monetary compensation. This restriction applies to both the original
+Software and modified or derivative versions.
 
+3. Redistribution
+Redistributions must retain this license and the copyright notice, clearly
+identify modifications, and remain subject to these non-commercial
+restrictions. You may not grant recipients commercial rights or impose
+terms that contradict this license.
+
+4. Third-party materials
+This license covers only material whose rights are held by the copyright
+holder. Third-party dependencies, trademarks, and user-generated content
+remain subject to their respective licenses and rights.
+
+5. Termination
+Rights granted under this license terminate automatically upon violation.
+
+6. Disclaimer
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

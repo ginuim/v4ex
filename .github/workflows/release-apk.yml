@@ -1,0 +1,75 @@
+name: Release APK
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V4EX_storeFile: ${{ runner.temp }}/v4ex-release.jks
+      V4EX_storePassword: ${{ secrets.V4EX_STORE_PASSWORD }}
+      V4EX_keyAlias: ${{ secrets.V4EX_KEY_ALIAS }}
+      V4EX_keyPassword: ${{ secrets.V4EX_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Restore release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.V4EX_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 V4EX_storePassword V4EX_keyAlias V4EX_keyPassword; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing signing secret: $name (see README release instructions)"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$V4EX_storeFile"
+
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Test and build signed release
+        run: bash ./gradlew --no-daemon testReleaseUnitTest assembleRelease
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/V4EX.apk
+          cd dist
+          sha256sum V4EX.apk > V4EX.apk.sha256
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/V4EX.apk dist/V4EX.apk.sha256 --clobber
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$V4EX_storeFile"

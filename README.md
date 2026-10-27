@@ -101,6 +101,25 @@ keyPassword=***
 
 没有这个文件时 `release` 构建会跳过签名，`debug` 包不受影响——直接 `assembleDebug` 就能用。
 
+### GitHub Release 自动打包
+
+[Release APK](.github/workflows/release-apk.yml) 在发布 Release（含预发布）后检出对应 tag，使用 JDK 17 / Android SDK 35 运行 Release 单测、构建并验证签名，随后将 `V4EX.apk` 和 `V4EX.apk.sha256` 上传到该 Release。仅保存草稿或推送 tag 不触发。
+
+先在仓库 **Settings → Secrets and variables → Actions** 添加以下 Repository secrets：
+
+| Secret | 内容 |
+|---|---|
+| `V4EX_KEYSTORE_BASE64` | 正式签名 keystore 文件的 Base64 内容 |
+| `V4EX_STORE_PASSWORD` | keystore 密码 |
+| `V4EX_KEY_ALIAS` | 签名 key 的 alias |
+| `V4EX_KEY_PASSWORD` | 签名 key 的密码 |
+
+macOS 可用 `base64 -i /你的路径/release.jks | pbcopy` 将编码复制到剪贴板，再粘贴到 Secret；不要提交 keystore 或编码。应复用现有正式签名密钥，否则无法覆盖安装旧版本。
+
+发布前先修改 `app/build.gradle.kts` 的 `versionName` / `versionCode`（升级安装要求 versionCode 递增），提交并推送代码和 tag，再在 GitHub 发布该 tag 的 Release。tag 名只用于选取源码，不会自动覆盖应用版本。首次发布需确保 tag 内已包含此 workflow。
+
+签名 Secret 缺失或签名无效时任务失败，不上传未签名包。修复后可在 Actions 重跑，同名附件会被替换。仓库须允许 Actions 运行；此流程需要向 Release 写入附件，不能用于已经锁定附件的不可变 Release。构建及上传状态在 Actions 的 **Release APK** 查看。
+
 纯函数单测（分享文案 / 对话归组，不需要模拟器）：
 
 ```bash
@@ -159,7 +178,9 @@ app/src/test/java/com/v4ex/android/data/
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 ginuim
+[V4EX Non-Commercial License 1.0](LICENSE) © 2026 ginuim
+
+允许非商业使用、修改和再分发；**禁止商用**（包括售卖、付费分发、广告或订阅变现、商业产品 / 服务及企业业务用途），商业使用须先取得著作权人的书面授权。再分发须保留协议及版权声明，修改版须标明改动并遵守同样的非商业限制。这是源码可用的非商业协议，不属于 OSI 定义的开源协议；第三方依赖及用户内容仍遵守各自的许可。此前已按 MIT 发布的版本保留原有授权。
 
 与 V2EX 官方无关，未获其背书。界面中的用户内容版权归各自作者所有。
 
