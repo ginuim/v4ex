@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------- 签名（绝不提交）
+keystore.properties
+keystore/*.jks
+keystore/*.keystore
+*.jks
+*.keystore
+
+# ---------------------------------------------------------------- Gradle / Build
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+captures/
+.cxx/
+*.iml
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ---------------------------------------------------------------- IDE
+.idea/
+.vscode/
+*.swp
+
+# ---------------------------------------------------------------- macOS
+.DS_Store
