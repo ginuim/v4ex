@@ -157,12 +157,15 @@ fun TopicScreen(
                         }
                         Spacer(Modifier.height(24.dp))
                     }
-                    ReplyHeader(
-                        count = replies.size,
-                        conversationCount = if (threaded) conversationCount else 0,
-                        threaded = threaded,
-                        onToggle = onToggleThreaded,
-                    )
+                    // 一条回复都没有时，楼层/对话切换没有意义，连「回复 0」一起不显示。
+                    if (replies.isNotEmpty()) {
+                        ReplyHeader(
+                            count = replies.size,
+                            conversationCount = if (threaded) conversationCount else 0,
+                            threaded = threaded,
+                            onToggle = onToggleThreaded,
+                        )
+                    }
                 }
 
                 replyItems(

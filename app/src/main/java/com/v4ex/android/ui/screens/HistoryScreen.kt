@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.HistoryEntry
+import com.v4ex.android.data.HistoryGroup
 import com.v4ex.android.data.Time
 import com.v4ex.android.ui.EmptyArt
 import com.v4ex.android.ui.EmptyState
@@ -94,13 +96,32 @@ fun HistoryScreen(
             return@Column
         }
 
+        // 按天分组：今天 / 昨天 / 具体日期。分组只在 entries 变化时重算。
+        val days = remember(items) { HistoryGroup.group(items) }
         LazyColumn(Modifier.fillMaxSize()) {
-            items(items, key = { it.id }) { entry ->
-                HistoryRow(entry, onClick = { onOpen(entry) }, onRemove = { onRemove(entry.id) })
+            days.forEach { day ->
+                item(key = "day-${day.date}") { DayHeader(day.label) }
+                items(day.items, key = { it.id }) { entry ->
+                    HistoryRow(entry, onClick = { onOpen(entry) }, onRemove = { onRemove(entry.id) })
+                }
             }
             item { Spacer(Modifier.height(110.dp)) }
         }
     }
+}
+
+/** 日期分隔行：今天 / 昨天 / 10 月 26 日。 */
+@Composable
+private fun DayHeader(label: String) {
+    Text(
+        text = label,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 5.dp),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        color = Ink.Tertiary,
+    )
 }
 
 @Composable

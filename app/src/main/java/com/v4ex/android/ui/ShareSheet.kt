@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +85,12 @@ private val KnownApps = listOf(
 private const val MaxApps = 14
 private const val GridColumns = 5
 
+/**
+ * 图标格子边长（dp）。注意：图标是从 PackageManager 位图化过来的，
+ * 位图必须按「显示尺寸 × density」换算成像素，否则在 2x/3x 屏上会被放大插值，糊成一片。
+ */
+private val TileIconSize = 48.dp
+
 /** 网格里的一格：具体 App，或固定末尾的「更多」。 */
 private data class ShareTarget(
     val pkg: String,
@@ -104,13 +111,17 @@ fun ShareSheet(
     onOpenInBrowser: () -> Unit,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var targets by remember(payload) { mutableStateOf<List<ShareTarget>?>(null) }
     var copyTick by remember { mutableIntStateOf(0) }
     var copied by remember { mutableStateOf(false) }
 
-    LaunchedEffect(payload) {
-        targets = withContext(Dispatchers.IO) { loadShareTargets(context) }
+    LaunchedEffect(payload, density) {
+        // 位图边长必须用「dp × density」得到的像素数，直接传 48 会按 48px 生成，
+        // 在 3x 屏上被拉大近 3 倍（这是之前图标发糊的原因）。
+        val iconPx = with(density) { TileIconSize.roundToPx() }
+        targets = withContext(Dispatchers.IO) { loadShareTargets(context, iconPx) }
     }
     // 每次点复制 tick+1，effect 重来；连点也只会以最后一次为准（旧 delay 被取消）
     LaunchedEffect(copyTick) {
@@ -305,7 +316,7 @@ private fun ShareTile(
             icon != null -> Image(
                 bitmap = icon,
                 contentDescription = target.label,
-                modifier = Modifier.size(48.dp).clip(iconShape),
+                modifier = Modifier.size(TileIconSize).clip(iconShape),
                 contentScale = ContentScale.Crop,
             )
             else -> TileFallbackBox {
@@ -334,7 +345,7 @@ private fun ShareTile(
 private fun TileFallbackBox(content: @Composable () -> Unit) {
     Box(
         Modifier
-            .size(48.dp)
+            .size(TileIconSize)
             .clip(RoundedCornerShape(14.dp))
             .background(Ink.ChipBg),
         contentAlignment = Alignment.Center,
@@ -362,9 +373,10 @@ private fun ActionRow(text: String, tint: Color, onClick: () -> Unit) {
 /**
  * 查设备上能接收 text/plain 的 App：按包名去重、排除自己，
  * 已知主流 App 按固定顺序优先，其余按应用名排序，最多 [MaxApps] 个。
- * 图标在这里（IO 线程）就转成 ImageBitmap，Compose 侧只负责画。
+ * 图标在这里（IO 线程）就按 [iconSizePx]（显示像素，不是 dp）转成 ImageBitmap，
+ * Compose 侧只负责画，保证 1:1 上屏不插值。
  */
-private fun loadShareTargets(context: Context): List<ShareTarget> {
+private fun loadShareTargets(context: Context, iconSizePx: Int): List<ShareTarget> {
     val pm = context.packageManager
     val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
     val resolved = runCatching { pm.queryIntentActivities(intent, 0) }.getOrDefault(emptyList())
@@ -393,7 +405,9 @@ private fun loadShareTargets(context: Context): List<ShareTarget> {
         .take(MaxApps)
         .map { (pkg, label) ->
             val icon = runCatching {
-                pm.getApplicationIcon(pkg).toBitmap(48, 48).asImageBitmap()
+                pm.getApplicationIcon(pkg)
+                    .toBitmap(iconSizePx, iconSizePx)
+                    .asImageBitmap()
             }.getOrNull()
             ShareTarget(pkg = pkg, label = label, icon = icon)
         }

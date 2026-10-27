@@ -104,32 +104,20 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
         enabled = openTopic != null || openNode != null || openMember != null || openHistory,
     ) {
         // 返回顺序必须和「显示顺序」相反，一层一层退：
-        // 个人页 → 帖子页 → 节点页 → 首页。
-        // 之前 openNode 判在 openTopic 之前，在帖子里按返回会先把节点栈清掉，
-        // 于是从节点点开的帖子返回后会直接掉回首页。
+        // 个人页 → 帖子页 → 节点页 → 浏览历史 → 首页/我的。
+        // 历史页只是从「我的」点开的子页；从历史点进帖子时它留在栈里（被帖子页盖住），
+        // 所以帖子返回要回到历史，而不是直接掉回「我的」。
         when {
             openMember != null -> openMember = null
-            openHistory -> openHistory = false
             openTopic != null -> openTopic = null
             openNode != null -> openNode = null
+            openHistory -> openHistory = false
         }
     }
 
     Box(Modifier.fillMaxSize().background(Ink.Surface)) {
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             when {
-                openHistory -> HistoryScreen(
-                    items = history,
-                    loaded = historyLoaded,
-                    onBack = { openHistory = false },
-                    onOpen = { entry ->
-                        openHistory = false
-                        openTopic = entry.id
-                    },
-                    onRemove = vm::removeHistory,
-                    onClearAll = vm::clearHistory,
-                )
-
                 // 个人页叠在帖子页之上。先判 openMember，否则从帖子里点作者永远进不去。
                 openMember != null -> MemberScreen(
                     loading = member.loading,
@@ -169,6 +157,17 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onTopic = { openTopic = it.id },
                     onRetry = { openNode?.let { vm.loadNodeTopics(it) } },
                     onLoadMore = vm::loadMoreNodeTopics,
+                )
+
+                // 浏览历史压在帖子/节点页下面：从历史点进帖子时它不关闭，
+                // 帖子返回后回到历史列表，而不是直接掉回「我的」。
+                openHistory -> HistoryScreen(
+                    items = history,
+                    loaded = historyLoaded,
+                    onBack = { openHistory = false },
+                    onOpen = { entry -> openTopic = entry.id },
+                    onRemove = vm::removeHistory,
+                    onClearAll = vm::clearHistory,
                 )
 
                 tab == 0 -> HomeScreen(

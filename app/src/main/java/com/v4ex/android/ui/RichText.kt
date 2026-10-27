@@ -1,15 +1,18 @@
 package com.v4ex.android.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
@@ -21,7 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -29,11 +35,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import coil.size.Dimension
+import coil.size.Precision
+import coil.size.Size
 import com.v4ex.android.ui.theme.Ink
+import kotlin.math.roundToInt
 
 /** V2EX 正文/回复的最小 Markdown 子集，够用就好。 */
 sealed interface MdBlock {
@@ -262,32 +276,7 @@ fun RichContent(
                         .background(Ink.Line),
                 )
 
-                is MdBlock.Image -> SubcomposeAsyncImage(
-                    model = block.url,
-                    contentDescription = block.alt,
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 90.dp, max = 620.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { uriHandler.openUri(block.url) },
-                    loading = {
-                        Box(
-                            Modifier.fillMaxWidth().height(150.dp).background(Ink.ChipBg),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            PixelLoader(size = 7.dp, gap = 3.dp, color = Ink.Secondary)
-                        }
-                    },
-                    error = {
-                        Box(
-                            Modifier.fillMaxWidth().height(84.dp).background(Ink.ChipBg),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("图片加载失败 · 点击用浏览器打开", fontSize = 12.sp, color = Ink.Tertiary)
-                        }
-                    },
-                )
+                is MdBlock.Image -> RichImage(block.url, block.alt, uriHandler)
             }
         }
     }
@@ -323,4 +312,111 @@ private fun LinkText(
 @Composable
 private fun Spacer2() {
     androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+}
+
+/** 图片解码高度相对容器宽度的上限：只为防超长图一次占满内存，普通图片用不到。 */
+private const val MaxImageAspect = 10
+
+private val ImageLoadingHeight = 150.dp
+private val ImageErrorHeight = 84.dp
+
+/**
+ * 图片应该占多少像素：
+ * - 图片本身比容器窄：按原尺寸（1:1 物理像素）显示，绝不放大；
+ * - 图片比容器宽：缩到容器宽度；
+ * - 高度始终等比换算。
+ * 纯函数，单测覆盖（纯像素计算，不涉及 density / dp）。
+ */
+internal fun imageDisplaySizePx(
+    naturalWidthPx: Int,
+    naturalHeightPx: Int,
+    containerWidthPx: Int,
+): Pair<Int, Int> {
+    if (naturalWidthPx <= 0 || naturalHeightPx <= 0 || containerWidthPx <= 0) return 0 to 0
+    val scale = if (naturalWidthPx <= containerWidthPx) {
+        1f
+    } else {
+        containerWidthPx.toFloat() / naturalWidthPx
+    }
+    return (naturalWidthPx * scale).roundToInt().coerceAtLeast(1) to
+        (naturalHeightPx * scale).roundToInt().coerceAtLeast(1)
+}
+
+/**
+ * 正文里的图片：
+ * - 比容器窄的图按图片自身像素 1:1 显示——表情包这类小图不会再被拉满屏、糊成一片；
+ * - 比容器宽的图缩到容器宽度；
+ * - 高度按原始比例换算，不再硬裁。
+ *
+ * 解码尺寸显式按容器宽度给：否则 Coil 会先按「加载占位」的布局尺寸解码，
+ * 拿到的 intrinsic 比例是失真的，小图就会被误判成别的尺寸。
+ */
+@Composable
+private fun RichImage(url: String, alt: String, uriHandler: UriHandler) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // 正常都在有界宽度里排版（列表项 / 楼层正文）；万一无界就退回一个保守宽度。
+        val containerPx = if (constraints.hasBoundedWidth) {
+            constraints.maxWidth
+        } else {
+            with(density) { 400.dp.roundToPx() }
+        }
+        val request = remember(url, containerPx) {
+            ImageRequest.Builder(context)
+                .data(url)
+                .size(Size(containerPx, Dimension.Pixels(containerPx * MaxImageAspect)))
+                // Precision.AUTOMATIC 在「显式给定尺寸」时会解析成 EXACT，小图会在解码时被
+                // 放大到容器宽度，后面再怎么 1:1 显示也还是糊的；INEXACT 允许解码器只缩不放。
+                .precision(Precision.INEXACT)
+                .build()
+        }
+        val painter = rememberAsyncImagePainter(request)
+        val state = painter.state
+        val natural = (state as? AsyncImagePainter.State.Success)
+            ?.result
+            ?.drawable
+            ?.takeIf { it.intrinsicWidth > 0 && it.intrinsicHeight > 0 }
+            ?.let { IntSize(it.intrinsicWidth, it.intrinsicHeight) }
+
+        when {
+            natural != null -> {
+                // 只缩不放：小图 1:1，大图缩到容器宽。
+                val (widthPx, heightPx) = imageDisplaySizePx(natural.width, natural.height, containerPx)
+                val display = with(density) { DpSize(widthPx.toDp(), heightPx.toDp()) }
+                Image(
+                    painter = painter,
+                    contentDescription = alt,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .size(display.width, display.height)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { uriHandler.openUri(url) },
+                )
+            }
+
+            state is AsyncImagePainter.State.Error -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(ImageErrorHeight)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Ink.ChipBg)
+                    .clickable { uriHandler.openUri(url) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("图片加载失败 · 点击用浏览器打开", fontSize = 12.sp, color = Ink.Tertiary)
+            }
+
+            else -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(ImageLoadingHeight)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Ink.ChipBg),
+                contentAlignment = Alignment.Center,
+            ) {
+                PixelLoader(size = 7.dp, gap = 3.dp, color = Ink.Secondary)
+            }
+        }
+    }
 }
