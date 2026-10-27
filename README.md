@@ -68,12 +68,16 @@ openNode     -> openNode = null
 
 ## 登录
 
+![我的](docs/android-me.png)
+
 V2EX 没有 OAuth，只有 Personal Access Token：
 
 1. 网页版 <https://www.v2ex.com/settings/token> 创建令牌（最长 360 天）
 2. App 里「我的 → 填写令牌」粘贴
 
 令牌用 DataStore 存在本机，不上传任何地方。**不填也能用**（首页/节点/帖子全部是 v1 免令牌接口）。
+
+「我的」页显示会员等级、令牌剩余有效期与权限范围、注册时间，以及更换 / 清空令牌、浏览历史入口。
 
 ## 构建 / 安装
 
