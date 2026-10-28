@@ -177,7 +177,7 @@ fun MeScreen(
 
         Spacer(Modifier.height(26.dp))
         Text(
-            "V4EX ${com.v4ex.android.BuildConfig.VERSION_NAME} · 以阅读为主\n内容来自 V2EX，与官方无关",
+            "V4EX ${com.v4ex.android.BuildConfig.VERSION_NAME}\n依照 V2EX 开放能力，普通用户可浏览阅读，PRO 用户还可发布内容。\n内容来自 V2EX，与官方无关",
             modifier = Modifier.padding(horizontal = 22.dp),
             fontSize = 12.sp,
             lineHeight = 18.sp,
