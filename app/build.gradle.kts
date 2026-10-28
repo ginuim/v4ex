@@ -14,8 +14,8 @@ android {
         applicationId = "com.v4ex.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.5.1"
+        versionCode = 10
+        versionName = "0.5.2"
     }
     // 签名配置按优先级读取，前一个没有就找下一个：
     //   1. 项目根目录的 keystore.properties（本地临时用，已在 .gitignore）
@@ -98,5 +98,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

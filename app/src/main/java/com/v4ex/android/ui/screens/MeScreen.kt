@@ -71,6 +71,8 @@ fun MeScreen(
     onDismissCreate: () -> Unit,
     themeMode: ThemeMode,
     onThemeMode: (ThemeMode) -> Unit,
+    checkingUpdate: Boolean = false,
+    onCheckUpdate: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val authorWebsite = stringResource(R.string.author_website_url)
@@ -143,6 +145,9 @@ fun MeScreen(
         }
         InfoRow("数据来源", "V2EX API 2.0")
 
+        ActionRow(if (checkingUpdate) "正在检查更新…" else "检查更新", {
+            if (!checkingUpdate) onCheckUpdate()
+        })
         Spacer(Modifier.height(26.dp))
         SectionLabel("阅读")
         ActionRow(

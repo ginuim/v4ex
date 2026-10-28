@@ -65,6 +65,10 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun V4exApp(vm: AppViewModel = viewModel()) {
+    val updater: com.v4ex.android.update.AppUpdater = viewModel()
+    val updateState by updater.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { updater.check() }
+    com.v4ex.android.update.UpdateDialog(updateState, updater)
     val home by vm.home.collectAsStateWithLifecycle()
     val nodes by vm.nodes.collectAsStateWithLifecycle()
     val topic by vm.topic.collectAsStateWithLifecycle()
@@ -315,6 +319,8 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onDismissCreate = vm::dismissCreatedToken,
                     themeMode = vm.themeMode.collectAsStateWithLifecycle().value,
                     onThemeMode = vm::setThemeMode,
+                    checkingUpdate = updateState.checking,
+                    onCheckUpdate = { updater.check(manual = true) },
                 )
             }
         }
