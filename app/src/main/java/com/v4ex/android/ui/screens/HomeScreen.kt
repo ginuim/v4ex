@@ -76,6 +76,7 @@ fun HomeScreen(
     error: String?,
     onTopic: (Topic) -> Unit,
     onAuthor: (String) -> Unit,
+    onNode: (String) -> Unit,
     canCompose: Boolean,
     onCompose: () -> Unit,
     onRefresh: () -> Unit,
@@ -155,6 +156,7 @@ fun HomeScreen(
                         topic = topic,
                         read = topic.id.toString() in readIds,
                         onAuthor = { onAuthor(topic.member.username) },
+                        onNode = onNode,
                     ) { onTopic(topic) }
                 }
             }
@@ -166,6 +168,7 @@ fun HomeScreen(
                         topic = topic,
                         read = topic.id.toString() in readIds,
                         onAuthor = { onAuthor(topic.member.username) },
+                        onNode = onNode,
                     ) { onTopic(topic) }
                 }
 

@@ -112,6 +112,7 @@ fun TopicRow(
     read: Boolean = false,
     onAuthor: (() -> Unit)? = null,
     showNode: Boolean = true,
+    onNode: ((String) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -150,6 +151,7 @@ fun TopicRow(
                         Modifier.widthIn(max = 140.dp)
                             .clip(RoundedCornerShape(5.dp))
                             .background(Ink.ChipBg)
+                            .then(if (onNode != null) Modifier.clickable { onNode(topic.node.name) } else Modifier)
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,

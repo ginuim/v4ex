@@ -80,6 +80,7 @@ fun TopicScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onAuthor: (String) -> Unit,
+    onNode: (String) -> Unit,
     onLoadMoreReplies: () -> Unit,
     onSticky: (String) -> Unit,
     onBoost: () -> Unit,
@@ -219,6 +220,7 @@ fun TopicScreen(
                                     Modifier.align(Alignment.CenterVertically).widthIn(max = 140.dp)
                                         .clip(RoundedCornerShape(5.dp))
                                         .background(Ink.ChipBg)
+                                        .clickable { onNode(topic.node.name) }
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                     fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,

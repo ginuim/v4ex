@@ -174,6 +174,10 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onBack = { openTopic = null },
                     onRetry = { openTopic?.let { vm.loadTopic(it) } },
                     onAuthor = { openMember = it },
+                    onNode = {
+                        openNode = it
+                        openTopic = null
+                    },
                     onLoadMoreReplies = vm::loadMoreReplies,
                     onSticky = vm::setSticky,
                     onBoost = vm::boostTopic,
@@ -236,6 +240,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     hint = home.hint,
                     error = home.error,
                     onTopic = { openTopic = it.id },
+                    onNode = { openNode = it },
                     onRefresh = {
                         vm.refreshHome()
                         vm.loadMe()

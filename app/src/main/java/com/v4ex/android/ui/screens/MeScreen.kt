@@ -90,7 +90,7 @@ fun MeScreen(
         )
 
         Spacer(Modifier.height(18.dp))
-        Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.Top) {
             Avatar(me?.avatar, me?.username ?: "V", 58.dp)
             Spacer(Modifier.width(14.dp))
             Column {
@@ -101,9 +101,17 @@ fun MeScreen(
                         fontWeight = FontWeight.Medium,
                         color = Ink.Primary,
                     )
-                    if (hasToken && me?.pro == true) {
-                        Spacer(Modifier.width(8.dp))
-                        ProBadge()
+                }
+                if (hasToken && me != null) {
+                    Spacer(Modifier.height(5.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (me.pro) {
+                            ProBadge()
+                            Spacer(Modifier.width(5.dp))
+                            Text("会员", fontSize = 13.sp, color = Ink.Secondary)
+                        } else {
+                            Text("普通会员", fontSize = 13.sp, color = Ink.Secondary)
+                        }
                     }
                 }
                 Spacer(Modifier.height(3.dp))
@@ -120,23 +128,8 @@ fun MeScreen(
             }
         }
 
-        Spacer(Modifier.height(26.dp))
+        Spacer(Modifier.height(13.dp))
         SectionLabel("账号")
-        if (hasToken && me?.pro == true) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("会员", fontSize = 14.sp, color = Ink.Secondary)
-                Spacer(Modifier.weight(1f))
-                ProBadge()
-            }
-        } else InfoRow("会员", when {
-            !hasToken -> "未登录"
-            me == null -> "身份未确认"
-            me.pro -> "PRO"
-            else -> "普通"
-        })
         if (hasToken && me != null) {
             InfoRow("会员 id", me.id.toString())
             InfoRow("令牌有效期", "${me.tokenDays.toInt()} 天 · ${me.tokenScope}")

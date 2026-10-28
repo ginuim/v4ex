@@ -8,6 +8,7 @@ data class SharePayload(
     val title: String,
     val link: String,
     val excerpt: String? = null,
+    val markdown: String? = null,
 ) {
     fun text(): String {
         val ex = excerpt?.trim().orEmpty()
@@ -28,6 +29,7 @@ fun topicSharePayload(topic: Topic): SharePayload = SharePayload(
     title = topic.title,
     link = topic.url,
     excerpt = cleanShareExcerpt(topic.content),
+    markdown = topic.content,
 )
 
 /** 回复分享：链接锚到楼层 #replyN，摘要取该楼内容。 */
@@ -35,6 +37,7 @@ fun replySharePayload(topic: Topic, reply: Reply): SharePayload = SharePayload(
     title = topic.title,
     link = topic.url.trimEnd('#') + "#reply${reply.floor}",
     excerpt = cleanShareExcerpt(reply.content),
+    markdown = reply.content,
 )
 
 // ---- Markdown → 一行纯文本 -------------------------------------------------

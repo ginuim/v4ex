@@ -110,6 +110,8 @@ fun ShareSheet(
     onDismiss: () -> Unit,
     onOpenInBrowser: () -> Unit,
 ) {
+    var showPoster by remember(payload) { mutableStateOf(false) }
+    if (showPoster) SharePosterDialog(payload) { showPoster = false }
     val context = LocalContext.current
     val density = LocalDensity.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -224,6 +226,7 @@ fun ShareSheet(
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = Ink.Line, thickness = 1.dp)
 
+            ActionRow(text = "图片海报", tint = Ink.Primary) { showPoster = true }
             ActionRow(
                 text = if (copied) "已复制链接 ✓" else "复制链接",
                 tint = if (copied) Ink.Blue else Ink.Primary,
