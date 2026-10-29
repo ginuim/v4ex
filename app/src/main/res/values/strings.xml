@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">V4EX</string>
     <string name="author_copyright" translatable="false">© reaidea.com</string>
-    <string name="author_website_url" translatable="false">https://reaidea.com</string>
+    <string name="author_website_url" translatable="false">https://reaidea.com?utm_source=v4ex</string>
 </resources>

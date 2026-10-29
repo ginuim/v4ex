@@ -129,7 +129,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val permissions: MemberPermissions
         get() = MemberPermissions.resolve(tokenValue.isNotBlank(), _me.value.me, !_me.value.loading && _me.value.error == null)
-            .copy(canPublish = true) // TEMP: 预览 PRO 发布和回复入口。
 
     fun publishTopic(node: String, title: String, content: String, syntax: String) {
         if (!permissions.canPublish) return
