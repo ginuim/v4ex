@@ -1,5 +1,6 @@
 package com.v4ex.android.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,37 +14,42 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.Reply
 import com.v4ex.android.data.ReplyRow
 import com.v4ex.android.data.Time
 import com.v4ex.android.ui.theme.Ink
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
 /**
@@ -84,6 +90,7 @@ fun LazyListScope.replyItems(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReplyItem(
     row: ReplyRow,
@@ -93,44 +100,88 @@ private fun ReplyItem(
     onShareReply: ((Reply) -> Unit)?,
 ) {
     val reply = row.reply
-    var menuPosition by remember(reply.id) { mutableStateOf<Offset?>(null) }
+    var showMenu by remember(reply.id) { mutableStateOf(false) }
+    var dismissing by remember(reply.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    val longPressModifier = Modifier.replyLongPress(reply) { menuPosition = it }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val longPressModifier = Modifier.replyLongPress(reply) { showMenu = true }
 
-    Box {
-        if (row.depth <= 0) {
-            RootReplyRow(row, isOp, groupSize, onAuthor, longPressModifier)
-        } else {
-            ChildReplyRow(row, isOp, onAuthor, longPressModifier)
-        }
-        val position = menuPosition
-        Box(Modifier.offset {
-            IntOffset(
-                (position?.x ?: 0f).toInt(), (position?.y ?: 0f).toInt(),
-            )
-        }) {
-            DropdownMenu(
-                expanded = position != null,
-                onDismissRequest = { menuPosition = null },
-            ) {
-                DropdownMenuItem(
-                    text = { Text("复制") },
-                    onClick = {
-                        clipboard.setText(AnnotatedString(reply.content))
-                        menuPosition = null
-                    },
-                )
-                if (onShareReply != null) {
-                    DropdownMenuItem(
-                        text = { Text("分享") },
-                        onClick = {
-                            menuPosition = null
-                            onShareReply(reply)
-                        },
-                    )
+    if (row.depth <= 0) {
+        RootReplyRow(row, isOp, groupSize, onAuthor, longPressModifier)
+    } else {
+        ChildReplyRow(row, isOp, onAuthor, longPressModifier)
+    }
+    if (showMenu) {
+        // 先完成收起动画，再执行操作，避免分享面板与菜单同时切换。
+        fun dismissThen(action: () -> Unit) {
+            if (dismissing) return
+            dismissing = true
+            scope.launch {
+                try {
+                    sheetState.hide()
+                    showMenu = false
+                    action()
+                } finally {
+                    dismissing = false
                 }
             }
         }
+        ModalBottomSheet(
+            onDismissRequest = { showMenu = false },
+            sheetState = sheetState,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = Ink.Elevated,
+            contentColor = Ink.Primary,
+            scrimColor = Ink.Scrim,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding()
+                    .padding(start = 22.dp, end = 22.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "${reply.member.username} · ${reply.floor} 楼",
+                    fontSize = 13.sp,
+                    color = Ink.Tertiary,
+                )
+                Text(
+                    text = reply.content.trim(),
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    color = Ink.Secondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                )
+                ReplyAction("复制", !dismissing) {
+                    dismissThen {
+                        clipboard.setText(AnnotatedString(reply.content))
+                        Toast.makeText(context, "已复制评论", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                if (onShareReply != null) {
+                    ReplyAction("分享", !dismissing) {
+                        dismissThen { onShareReply(reply) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplyAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 58.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Ink.ChipBg)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Ink.Primary)
     }
 }
 
@@ -306,7 +357,7 @@ private fun ChildReplyRow(
  * 所以这里在 Initial pass 自己计时判定长按；命中后把剩余的移动/抬起事件消费掉，
  * 内层 clickable 看到被消费的 up 就不会在松手时误触发点击，滚动也不受影响。
  */
-private fun Modifier.replyLongPress(key: Any, onLongPress: (Offset) -> Unit): Modifier =
+private fun Modifier.replyLongPress(key: Any, onLongPress: () -> Unit): Modifier =
     pointerInput(key) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -326,7 +377,7 @@ private fun Modifier.replyLongPress(key: Any, onLongPress: (Offset) -> Unit): Mo
                 true
             }
             if (!longPressed) return@awaitEachGesture
-            onLongPress(down.position)
+            onLongPress()
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
