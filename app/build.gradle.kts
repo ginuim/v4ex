@@ -14,8 +14,8 @@ android {
         applicationId = "com.v4ex.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.5.6"
+        versionCode = 15
+        versionName = "0.5.7"
     }
     // 签名配置按优先级读取，前一个没有就找下一个：
     //   1. 项目根目录的 keystore.properties（本地临时用，已在 .gitignore）

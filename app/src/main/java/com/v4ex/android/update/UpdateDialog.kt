@@ -1,11 +1,18 @@
 package com.v4ex.android.update
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.unit.dp
+import com.v4ex.android.ui.MarkdownContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
 
 @Composable
 fun UpdateDialog(state: UpdateState, updater: AppUpdater) {
@@ -16,9 +23,13 @@ fun UpdateDialog(state: UpdateState, updater: AppUpdater) {
             title = { Text("发现新版本 ${release.version}") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(release.notes.ifBlank { "有新版本可供更新" })
+                    MarkdownContent(release.notes.ifBlank { "有新版本可供更新" })
                     if (state.downloading) {
-                        LinearProgressIndicator(progress = { state.progress / 100f })
+                        Spacer(Modifier.height(16.dp))
+                        androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth((state.progress / 100f).coerceIn(0f, 1f)).height(4.dp).background(MaterialTheme.colorScheme.primary))
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Text("正在下载 ${state.progress}%")
                     }
                     state.message?.let { Text(it) }
