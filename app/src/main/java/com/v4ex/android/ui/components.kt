@@ -161,6 +161,8 @@ fun TopicRow(
                 Text(
                     text = buildString {
                         append(topic.replies).append(" 回复")
+                        topic.stars?.let { append(" · $it 收藏") }
+                        topic.thanks?.let { append(" · $it 感谢") }
                         if (topic.lastReplyBy.isNotBlank()) append(" · @").append(topic.lastReplyBy)
                     },
                     modifier = Modifier.weight(1f),

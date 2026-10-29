@@ -124,12 +124,13 @@ internal fun foldInlineImages(slots: List<IntRange>, urls: List<String>): List<I
     }
 
 /**
- * 是不是「表情」而不是一张正文图片：行内图片的原始像素宽度不超过 [EmojiMaxWidthPx]
- * 就当表情，跟着文字排；尺寸未知时按「不是表情」处理，走原来的独立图片渲染。
+ * 是不是「表情」而不是一张正文图片：行内图片的宽高都不超过 [EmojiMaxWidthPx]
+ * 才当表情，跟着文字排；尺寸未知时按「不是表情」处理，走原来的独立图片渲染。
  * 纯函数，单测覆盖。
  */
-internal fun isInlineEmoji(naturalWidthPx: Int?): Boolean =
-    naturalWidthPx != null && naturalWidthPx in 1..EmojiMaxWidthPx
+internal fun isInlineEmoji(naturalWidthPx: Int?, naturalHeightPx: Int? = naturalWidthPx): Boolean =
+    naturalWidthPx != null && naturalHeightPx != null &&
+        naturalWidthPx in 1..EmojiMaxWidthPx && naturalHeightPx in 1..EmojiMaxWidthPx
 
 // V2EX 导出的 Markdown 括号里常带空格：![]( https://x/y.png) / [文本]( https://x)，
 // 所以一律允许括号内首尾有空白，URL 本身再 trim。
@@ -423,8 +424,8 @@ private const val MaxImageAspect = 10
 /** 行内表情比字号略大，保持可辨认且不额外撑高正文行。 */
 private const val EmojiScale = 1.25f
 
-/** 尺寸未知时的临时占位宽度：约等于一个中文字宽，命中缓存后立即换成真实尺寸。 */
-private val EmojiFallbackSize = 20.dp
+/** 探测尺寸必须大于表情阈值，避免把解码后的小缩略图误判成表情。 */
+internal const val EmojiProbeSizePx = EmojiMaxWidthPx * 2
 
 /** emoji 在 `InlineTextContent` 里的占位 id；同一个段落里每张图都不同。 */
 private fun emojiSlot(url: String) = "emoji:$url"
@@ -446,7 +447,7 @@ private fun cachedImageSize(loader: coil.ImageLoader, request: ImageRequest): In
 }
 
 /**
- * 段落里的一张图：先异步取一次尺寸（[probeSize]），再决定怎么排。
+ * 段落里的一张图：先用大于表情阈值的探测尺寸加载，再决定怎么排。
  * - 已知且够小 → 行内表情，跟着文字走（InlineTextContent）；
  * - 已知但太大 → 正文图片，独占一行，和以前一样；
  * - 还没取到 → 先按「表情」的占位排：表情是行内小图，就算排错也只是一张小方框，
@@ -462,13 +463,19 @@ private fun InlineImageBlock(
     uriHandler: UriHandler,
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val probeWidthPx = with(density) { EmojiFallbackSize.roundToPx() }
-    val probe = remember(block.url, probeWidthPx) { imageRequest(context, block.url, probeWidthPx) }
+    val probe = remember(block.url) {
+        ImageRequest.Builder(context)
+            .data(block.url)
+            .size(EmojiProbeSizePx, EmojiProbeSizePx)
+            .scale(coil.size.Scale.FIT)
+            .precision(Precision.INEXACT)
+            .memoryCacheKey("emoji-probe-v2:${block.url}")
+            .build()
+    }
     val natural = probeImageSize(block.url, probe)
 
     // 尺寸未知时按表情排版（见上面的取舍）；明确是大图才退回独占一行。
-    val knownNotEmoji = natural != null && !isInlineEmoji(natural.width)
+    val knownNotEmoji = natural != null && !isInlineEmoji(natural.width, natural.height)
     if (knownNotEmoji) {
         RichImage(block.url, "", uriHandler)
         return

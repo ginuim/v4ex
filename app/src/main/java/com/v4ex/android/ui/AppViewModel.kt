@@ -129,6 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val permissions: MemberPermissions
         get() = MemberPermissions.resolve(tokenValue.isNotBlank(), _me.value.me, !_me.value.loading && _me.value.error == null)
+            .copy(canPublish = true) // TEMP: 预览 PRO 发布和回复入口。
 
     fun publishTopic(node: String, title: String, content: String, syntax: String) {
         if (!permissions.canPublish) return
@@ -417,7 +418,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadNodeTopics(node: String) {
         val hasToken = tokenValue.isNotBlank()
-        _nodeTopics.value = NodeTopicsUi(node = node, loading = true)
+        _nodeTopics.value = if (_nodeTopics.value.node == node) _nodeTopics.value.copy(loading = true, error = null) else NodeTopicsUi(node = node, loading = true)
         viewModelScope.launch {
             try {
                 // v2 节点详情只有令牌能取；拿不到就不显示节点说明，不影响主题列表
@@ -483,7 +484,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun loadTopic(id: Int) {
         markRead(id)
-        _topic.value = TopicUi(loading = true)
+        _topic.value = if (_topic.value.topic?.id == id) _topic.value.copy(loading = true, error = null) else TopicUi(loading = true)
         viewModelScope.launch {
             try {
                 val hasToken = tokenValue.isNotBlank()

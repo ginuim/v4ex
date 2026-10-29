@@ -14,6 +14,8 @@ data class Topic(
     val node: NodeBrief,
     val member: UserBrief,
     val lastReplyBy: String,
+    val stars: Int? = null,
+    val thanks: Int? = null,
 )
 
 data class Reply(

@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,7 +65,7 @@ import com.v4ex.android.ui.ShareSheet
 import com.v4ex.android.ui.replyItems
 import com.v4ex.android.ui.theme.Ink
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TopicScreen(
     loading: Boolean,
@@ -87,6 +90,8 @@ fun TopicScreen(
     onDismissAction: () -> Unit,
     onReply: () -> Unit,
 ) {
+    var pullRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
     // 分享面板的内容：帖子本身，或长按楼层时的「带 #replyN 锚点」的楼层摘录。
     var sharePayload by remember { mutableStateOf<SharePayload?>(null) }
@@ -180,6 +185,7 @@ fun TopicScreen(
             ActionBanner(action = action, onDismiss = onDismissAction)
         }
 
+        PullToRefreshBox(isRefreshing = pullRefreshing, onRefresh = { if (!loading) { pullRefreshing = true; onRetry() } }, modifier = Modifier.weight(1f)) {
         when {
             error != null -> ErrorLine(error, onRetry)
             topic == null && loading -> LoadingBlock("正在读取主题…")
@@ -227,7 +233,11 @@ fun TopicScreen(
                                 )
                             }
                             Text(
-                                "${Time.ago(topic.created)} · ${topic.replies} 回复",
+                                buildString {
+                                    append("${Time.ago(topic.created)} · ${topic.replies} 回复")
+                                    topic.stars?.let { append(" · $it 收藏") }
+                                    topic.thanks?.let { append(" · $it 感谢") }
+                                },
                                 Modifier.align(Alignment.CenterVertically), fontSize = 12.5.sp, color = Ink.Secondary,
                             )
                         }
@@ -272,12 +282,12 @@ fun TopicScreen(
                         if (hasMoreReplies || moreRepliesLoading) {
                             ListFooter(
                                 canLoadMore = hasMoreReplies,
-                                loading = moreRepliesLoading,
+                                loading = moreRepliesLoading && !pullRefreshing,
                                 hint = null,
                                 onLoadMore = onLoadMoreReplies,
                             )
                         }
-                    } else if (loading) {
+                    } else if (loading && !pullRefreshing) {
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -291,6 +301,8 @@ fun TopicScreen(
                 }
             }
         }
+    }
+
     }
 
     sharePayload?.let { payload ->

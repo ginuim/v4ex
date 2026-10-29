@@ -3,6 +3,12 @@ package com.v4ex.android.ui
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.clickable
+import com.mikepenz.markdown.model.ImageTransformer
+import com.mikepenz.markdown.model.ImageData
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +34,17 @@ fun MarkdownContent(
     modifier: Modifier = Modifier,
     renderer: MarkdownRenderer = MarkdownRenderer.Modern,
 ) {
+    var preview by remember(text) { mutableStateOf<String?>(null) }
+    val images = remember(text) {
+        object : ImageTransformer by Coil2ImageTransformerImpl {
+            @Composable
+            override fun transform(url: String): ImageData? {
+                val data = Coil2ImageTransformerImpl.transform(url) ?: return null
+                return data.copy(modifier = data.modifier.clickable { preview = url })
+            }
+        }
+    }
+    preview?.let { ImagePreview(it) { preview = null } }
     when (renderer) {
         MarkdownRenderer.Legacy -> RichContent(text, modifier, paragraphSpacing = 18.dp)
         MarkdownRenderer.Modern -> {
@@ -35,7 +52,7 @@ fun MarkdownContent(
             Markdown(
                 content = remember(text) { normalizeMarkdownLineEndings(text) },
                 modifier = modifier.fillMaxWidth(),
-                imageTransformer = Coil2ImageTransformerImpl,
+                imageTransformer = images,
                 colors = markdownColor(
                     text = Ink.Primary, linkText = Ink.Blue,
                     codeBackground = Ink.ChipBg, dividerColor = Ink.Line,

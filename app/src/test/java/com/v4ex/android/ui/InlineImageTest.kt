@@ -109,4 +109,14 @@ class InlineImageTest {
         assertFalse(isInlineEmoji(0))
         assertFalse(isInlineEmoji(-1))
     }
+    @Test
+    fun probeCannotShrinkNormalImagesIntoEmojiRange() {
+        assertTrue(EmojiProbeSizePx > EmojiMaxWidthPx)
+        // 本帖截图按 FIT 缩到探测尺寸后，至少一边仍超过表情阈值。
+        assertFalse(isInlineEmoji(128, 63)) // 1920 × 945
+        assertFalse(isInlineEmoji(76, 128)) // 1183 × 2000
+        assertFalse(isInlineEmoji(20, 128)) // 窄长图也不能当表情
+        assertTrue(isInlineEmoji(20, 20))
+    }
+
 }

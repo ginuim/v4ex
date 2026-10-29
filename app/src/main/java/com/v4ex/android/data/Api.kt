@@ -441,6 +441,8 @@ class Api(
                     .ifBlank { null },
             ),
             lastReplyBy = o.optString("last_reply_by"),
+            stars = if (o.has("stars") && !o.isNull("stars")) o.optInt("stars") else null,
+            thanks = if (o.has("thanks") && !o.isNull("thanks")) o.optInt("thanks") else null,
         )
     }
 

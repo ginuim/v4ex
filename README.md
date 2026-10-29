@@ -4,7 +4,7 @@
 
 不做 AI 摘要、不做内容过滤——**帖子原样呈现**，水贴、跑题、抬杠都留着。
 
-![首页](docs/android-home.png)
+![打开即看社区新鲜事](docs/v4ex-home-card.jpg)
 
 ## 功能
 
@@ -15,6 +15,23 @@
 | 通知 | 未读提醒（回复 / 提及），底部标签带红色角标 |
 | 我的 | 头像、会员 id、令牌有效期、注册时间；填写 / 更换 / 清空令牌；浏览历史入口 |
 | 帖子 | 标题 + 正文 + 全部回复；**楼层 / 对话** 两种回复视图；右上角分享（分享到本机 App / 复制链接 / 浏览器打开） |
+
+## 界面预览
+
+<p>
+  <img src="docs/android-home.png" alt="首页热门主题" width="240" />
+  <img src="docs/android-nodes.png" alt="探索节点" width="240" />
+  <img src="docs/android-topic.png" alt="主题阅读" width="240" />
+</p>
+
+<details>
+<summary>查看界面拼贴</summary>
+
+<p>
+  <img src="docs/v4ex-screenshot-collage.jpg" alt="V4EX 真机外壳界面拼贴：发现话题，轻松逛社区" width="540" />
+</p>
+
+</details>
 
 ## 刷新 / 翻页 / 已读
 
@@ -30,7 +47,10 @@ v1 的 `topics/latest.json` 没有翻页（`p` 参数被忽略），所以**没�
 
 ## 分享
 
-![分享面板](docs/android-share.png)
+<p>
+  <img src="docs/android-share.png" alt="分享面板" width="280" />
+  <img src="docs/android-poster.png" alt="主题图片海报" width="280" />
+</p>
 
 | 能力 | 实现 |
 |---|---|
@@ -41,7 +61,7 @@ v1 的 `topics/latest.json` 没有翻页（`p` 参数被忽略），所以**没�
 
 ## 按对话看回复
 
-![对话视图](docs/android-thread.png)
+<img src="docs/android-thread.png" alt="对话视图与回复关系" width="320" />
 
 V2EX 的回复接口（v1 / v2）都**没有 parent 字段**，所以「谁在回复谁」只能从正文推断：
 
@@ -68,7 +88,7 @@ openNode     -> openNode = null
 
 ## 登录
 
-![我的](docs/android-me.png)
+<img src="docs/android-me.png" alt="我的：账户信息与浏览历史" width="320" />
 
 V2EX 没有 OAuth，只有 Personal Access Token：
 

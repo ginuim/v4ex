@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -354,6 +356,7 @@ private fun NodeListRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun NodeTopicsScreen(
     node: String,
     topics: List<com.v4ex.android.data.Topic>,
@@ -371,6 +374,8 @@ fun NodeTopicsScreen(
     detail: NodeDetail? = null,
     nodeTitle: String = "",
 ) {
+    var pullRefreshing by remember(node) { mutableStateOf(false) }
+    LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
     val listState = rememberLazyListState()
     val nearEnd by remember(canLoadMore) {
@@ -410,6 +415,7 @@ fun NodeTopicsScreen(
                 Text("打开原网页", fontSize = 12.sp, color = Ink.Secondary)
             }
         }
+        PullToRefreshBox(isRefreshing = pullRefreshing, onRefresh = { if (!loading) { pullRefreshing = true; onRetry() } }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item(key = "node-info") {
                 // v2 节点详情：节点说明 + 主题数/关注数。只有令牌能取到；取不到就整块不占位。
@@ -446,11 +452,11 @@ fun NodeTopicsScreen(
                     topic, read = topic.id.toString() in readIds, showNode = false,
                 ) { onTopic(topic) }
             }
-            if (loading) {
+            if (loading && !pullRefreshing) {
                 item {
                     com.v4ex.android.ui.LoadingBlock("正在读取节点主题…")
                 }
-            } else if (error == null || topics.isNotEmpty()) {
+            } else if (!loading && (error == null || topics.isNotEmpty())) {
                 item {
                     com.v4ex.android.ui.ListFooter(
                         canLoadMore = canLoadMore,
@@ -461,6 +467,7 @@ fun NodeTopicsScreen(
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
+        }
         }
     }
 }
