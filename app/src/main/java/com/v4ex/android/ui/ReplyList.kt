@@ -1,5 +1,6 @@
 package com.v4ex.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
@@ -25,6 +28,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.Reply
@@ -44,6 +48,7 @@ import kotlinx.coroutines.withTimeout
  */
 fun LazyListScope.replyItems(
     rows: List<ReplyRow>,
+    topicAuthor: String?,
     onAuthor: (String) -> Unit,
     onShareReply: ((Reply) -> Unit)? = null,
 ) {
@@ -62,6 +67,7 @@ fun LazyListScope.replyItems(
     items(rows, key = { "reply-${it.reply.id}" }) { row ->
         ReplyItem(
             row = row,
+            isOp = topicAuthor != null && row.reply.member.username.equals(topicAuthor, ignoreCase = true),
             groupSize = groupSize[row.reply.id] ?: 0,
             onAuthor = onAuthor,
             onShareReply = onShareReply,
@@ -72,6 +78,7 @@ fun LazyListScope.replyItems(
 @Composable
 private fun ReplyItem(
     row: ReplyRow,
+    isOp: Boolean,
     groupSize: Int,
     onAuthor: (String) -> Unit,
     onShareReply: ((Reply) -> Unit)?,
@@ -87,9 +94,9 @@ private fun ReplyItem(
     }
 
     if (row.depth <= 0) {
-        RootReplyRow(row, groupSize, onAuthor, longPressModifier)
+        RootReplyRow(row, isOp, groupSize, onAuthor, longPressModifier)
     } else {
-        ChildReplyRow(row, onAuthor, longPressModifier)
+        ChildReplyRow(row, isOp, onAuthor, longPressModifier)
     }
 }
 
@@ -97,6 +104,7 @@ private fun ReplyItem(
 @Composable
 private fun RootReplyRow(
     row: ReplyRow,
+    isOp: Boolean,
     groupSize: Int,
     onAuthor: (String) -> Unit,
     longPress: Modifier,
@@ -117,15 +125,33 @@ private fun RootReplyRow(
         )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     reply.member.username,
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1f, fill = false)
                         .clickable { onAuthor(reply.member.username) },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = Ink.Primary,
                 )
+                if (isOp) {
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "OP",
+                        modifier = Modifier
+                            .background(Ink.Primary, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        color = Ink.OnPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 12.sp,
+                    )
+                }
+                }
+                Spacer(Modifier.width(6.dp))
                 Text(
                     "${reply.floor} 楼 · ${Time.ago(reply.created)}",
                     fontSize = 11.5.sp,
@@ -157,6 +183,7 @@ private fun RootReplyRow(
 @Composable
 private fun ChildReplyRow(
     row: ReplyRow,
+    isOp: Boolean,
     onAuthor: (String) -> Unit,
     longPress: Modifier,
 ) {
@@ -188,15 +215,33 @@ private fun ChildReplyRow(
         )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     reply.member.username,
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1f, fill = false)
                         .clickable { onAuthor(reply.member.username) },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Medium,
                     color = Ink.Primary,
                 )
+                if (isOp) {
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "OP",
+                        modifier = Modifier
+                            .background(Ink.Primary, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        color = Ink.OnPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 12.sp,
+                    )
+                }
+                }
+                Spacer(Modifier.width(6.dp))
                 Text(
                     "${reply.floor} 楼 · ${Time.ago(reply.created)}",
                     fontSize = 11.5.sp,

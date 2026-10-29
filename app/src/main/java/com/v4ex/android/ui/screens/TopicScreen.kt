@@ -261,6 +261,7 @@ fun TopicScreen(
                 }
 
                 replyItems(
+                    topicAuthor = topic?.member?.username,
                     rows = rows,
                     onAuthor = onAuthor,
                     onShareReply = { reply ->
