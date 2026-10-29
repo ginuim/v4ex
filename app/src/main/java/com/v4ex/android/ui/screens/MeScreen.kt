@@ -145,9 +145,6 @@ fun MeScreen(
         }
         InfoRow("数据来源", "V2EX API 2.0")
 
-        ActionRow(if (checkingUpdate) "正在检查更新…" else "检查更新", {
-            if (!checkingUpdate) onCheckUpdate()
-        })
         Spacer(Modifier.height(26.dp))
         SectionLabel("阅读")
         ActionRow(
@@ -183,6 +180,9 @@ fun MeScreen(
             lineHeight = 18.sp,
             color = Ink.Tertiary,
         )
+        ActionRow(if (checkingUpdate) "正在检查更新…" else "检查更新", {
+            if (!checkingUpdate) onCheckUpdate()
+        })
         Text(
             stringResource(R.string.author_copyright),
             modifier = Modifier.padding(horizontal = 22.dp).clickable(role = Role.Button) {
