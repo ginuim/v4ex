@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,13 +13,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -27,8 +33,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v4ex.android.data.Reply
@@ -84,19 +93,44 @@ private fun ReplyItem(
     onShareReply: ((Reply) -> Unit)?,
 ) {
     val reply = row.reply
-    // 长按回调只在第一次组合时被 pointerInput 捕获，用 rememberUpdatedState 保证拿到最新的那个；
-    // pointerInput 的 key 用 reply 本体，数据没变就不会重启手势。
-    val currentShare by rememberUpdatedState(onShareReply)
-    val longPressModifier = if (onShareReply == null) {
-        Modifier
-    } else {
-        Modifier.replyLongPress(reply) { currentShare?.invoke(reply) }
-    }
+    var menuPosition by remember(reply.id) { mutableStateOf<Offset?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val longPressModifier = Modifier.replyLongPress(reply) { menuPosition = it }
 
-    if (row.depth <= 0) {
-        RootReplyRow(row, isOp, groupSize, onAuthor, longPressModifier)
-    } else {
-        ChildReplyRow(row, isOp, onAuthor, longPressModifier)
+    Box {
+        if (row.depth <= 0) {
+            RootReplyRow(row, isOp, groupSize, onAuthor, longPressModifier)
+        } else {
+            ChildReplyRow(row, isOp, onAuthor, longPressModifier)
+        }
+        val position = menuPosition
+        Box(Modifier.offset {
+            IntOffset(
+                (position?.x ?: 0f).toInt(), (position?.y ?: 0f).toInt(),
+            )
+        }) {
+            DropdownMenu(
+                expanded = position != null,
+                onDismissRequest = { menuPosition = null },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("复制") },
+                    onClick = {
+                        clipboard.setText(AnnotatedString(reply.content))
+                        menuPosition = null
+                    },
+                )
+                if (onShareReply != null) {
+                    DropdownMenuItem(
+                        text = { Text("分享") },
+                        onClick = {
+                            menuPosition = null
+                            onShareReply(reply)
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -272,7 +306,7 @@ private fun ChildReplyRow(
  * 所以这里在 Initial pass 自己计时判定长按；命中后把剩余的移动/抬起事件消费掉，
  * 内层 clickable 看到被消费的 up 就不会在松手时误触发点击，滚动也不受影响。
  */
-private fun Modifier.replyLongPress(key: Any, onLongPress: () -> Unit): Modifier =
+private fun Modifier.replyLongPress(key: Any, onLongPress: (Offset) -> Unit): Modifier =
     pointerInput(key) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -292,7 +326,7 @@ private fun Modifier.replyLongPress(key: Any, onLongPress: () -> Unit): Modifier
                 true
             }
             if (!longPressed) return@awaitEachGesture
-            onLongPress()
+            onLongPress(down.position)
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
