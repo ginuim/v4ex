@@ -57,7 +57,7 @@ import com.v4ex.android.ui.ErrorLine
 import com.v4ex.android.ui.ListFooter
 import com.v4ex.android.ui.LoadingBlock
 import com.v4ex.android.ui.PixelLoader
-import com.v4ex.android.ui.RichContent
+import com.v4ex.android.ui.TopicBody
 import com.v4ex.android.ui.ShareSheet
 import com.v4ex.android.ui.replyItems
 import com.v4ex.android.ui.theme.Ink
@@ -233,12 +233,7 @@ fun TopicScreen(
                         }
                         if (topic.content.isNotBlank()) {
                             Spacer(Modifier.height(16.dp))
-                            RichContent(
-                                text = topic.content,
-                                fontSize = 15.sp,
-                                lineHeight = 25.sp,
-                                paragraphSpacing = 18.dp,
-                            )
+                            TopicBody(text = topic.content)
                         }
                         Spacer(Modifier.height(24.dp))
                     }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.v4ex.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.5.4"
+        versionCode = 13
+        versionName = "0.5.5"
     }
     // 签名配置按优先级读取，前一个没有就找下一个：
     //   1. 项目根目录的 keystore.properties（本地临时用，已在 .gitignore）
@@ -84,6 +84,8 @@ android {
 }
 
 dependencies {
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.30.0")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-coil2:0.30.0")
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
