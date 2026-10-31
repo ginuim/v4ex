@@ -177,13 +177,32 @@ fun HomeScreen(
                 item(key = "categories") {
                     HomeCategoryNavigation(
                         categoryKey = categoryKey, selectedNode = selectedNode,
-                        nodeLoading = !nodeMatches || nodeState.loading || nodeState.updating || nodeState.moreLoading,
                         onCategory = { key ->
                             categoryKey = key
                             selectedNode = HomeCategories.first { it.key == key }.nodes.first().name
                         },
                         onNode = { selectedNode = it },
                     )
+                }
+                item(key = "sec-new") {
+                    val loading = !nodeMatches || nodeState.loading || nodeState.updating || nodeState.moreLoading
+                    Row(
+                        Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 22.dp)
+                            .semantics { if (loading) stateDescription = "正在加载" },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            category.nodes.firstOrNull { it.name == selectedNode }?.title.orEmpty(),
+                            fontSize = 12.5.sp, color = Ink.Secondary,
+                        )
+                        if (loading) {
+                            Spacer(Modifier.width(6.dp))
+                            PixelGridLoader(size = 3.dp, gap = 1.dp, color = Ink.Secondary)
+                        }
+                        if (visibleLatest.isNotEmpty()) {
+                            Text(" ${visibleLatest.size}", fontSize = 12.5.sp, color = Ink.Secondary)
+                        }
+                    }
                 }
                 if (nodeMatches && nodeState.error != null) {
                     item(key = "node-error") { ErrorLine(nodeState.error) { onSelectNode(selectedNode) } }
@@ -195,7 +214,6 @@ fun HomeScreen(
             }
 
             if (visibleLatest.isNotEmpty()) {
-                item(key = "sec-new") { SectionLabel("${category.nodes.firstOrNull { it.name == selectedNode }?.title.orEmpty()} ${visibleLatest.size}") }
                 items(visibleLatest, key = { "n${it.id}" }) { topic ->
                     TopicRow(
                         topic = topic,
@@ -351,7 +369,7 @@ private fun HomeHeader(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomeCategoryNavigation(
-    categoryKey: String, selectedNode: String, nodeLoading: Boolean,
+    categoryKey: String, selectedNode: String,
     onCategory: (String) -> Unit, onNode: (String) -> Unit,
 ) {
     var expanded by rememberSaveable(categoryKey) { mutableStateOf(false) }
@@ -382,29 +400,15 @@ private fun HomeCategoryNavigation(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             (if (expanded) category.nodes else category.nodes.take(4)).forEach { node ->
-                Row(
+                Text(
+                    node.title, fontSize = 12.sp,
+                    color = if (node.name == selectedNode) Ink.Primary else Ink.Secondary,
+                    fontWeight = if (node.name == selectedNode) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(Ink.ChipBg).semantics {
-                            selected = node.name == selectedNode
-                            if (node.name == selectedNode && nodeLoading) stateDescription = "正在加载"
-                        }
+                        .background(Ink.ChipBg).semantics { selected = node.name == selectedNode }
                         .clickable { onNode(node.name) }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        node.title, fontSize = 12.sp,
-                        color = if (node.name == selectedNode) Ink.Primary else Ink.Secondary,
-                        fontWeight = if (node.name == selectedNode) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                    // Keep the same footprint while loading changes so chips never reflow.
-                    Spacer(Modifier.width(4.dp))
-                    Box(Modifier.size(8.dp), contentAlignment = Alignment.Center) {
-                        if (node.name == selectedNode && nodeLoading) {
-                            PixelGridLoader(size = 2.dp, gap = 1.dp, color = Ink.Secondary)
-                        }
-                    }
-                }
+                )
             }
             if (category.nodes.size > 4) {
                 Text(
