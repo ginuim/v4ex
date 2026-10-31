@@ -21,4 +21,15 @@ class AppUpdaterTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsHttpDownload() { parseRelease(metadata(url = "http://github.com/ginuim/v4ex/releases/download/v1/V4EX.apk")) }
+    @Test fun downloadNamesDistinguishVersionsAndBuilds() {
+        val release = parseRelease(metadata())
+        assertEquals("V4EX-0.6.0-10.apk", release.apkFileName())
+        org.junit.Assert.assertNotEquals(release.apkFileName(), release.copy(code = 11).apkFileName())
+        org.junit.Assert.assertNotEquals(release.apkFileName(), release.copy(version = "0.6.1").apkFileName())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsUnsafeVersionInFilename() {
+        parseRelease(metadata().replace("0.6.0", "../app"))
+    }
 }

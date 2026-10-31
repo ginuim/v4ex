@@ -135,7 +135,7 @@ keyPassword=***
 
 ### GitHub Release 自动打包
 
-[Release APK](.github/workflows/release-apk.yml) 在发布 Release（含预发布）后检出对应 tag，使用 JDK 17 / Android SDK 35 运行 Release 单测、构建并验证签名，随后将 `V4EX.apk` 和 `V4EX.apk.sha256` 上传到该 Release。仅保存草稿或推送 tag 不触发。
+[Release APK](.github/workflows/release-apk.yml) 在发布 Release（含预发布）后检出对应 tag，使用 JDK 17 / Android SDK 35 运行 Release 单测、构建并验证签名，随后将 带版本号的 `V4EX-<版本号>.apk`、对应的 `.sha256` 校验文件和 `update.json` 上传到该 Release。仅保存草稿或推送 tag 不触发。
 
 先在仓库 **Settings → Secrets and variables → Actions** 添加以下 Repository secrets：
 

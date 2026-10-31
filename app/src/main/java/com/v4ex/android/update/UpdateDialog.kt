@@ -30,7 +30,7 @@ fun UpdateDialog(state: UpdateState, updater: AppUpdater) {
                             androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth((state.progress / 100f).coerceIn(0f, 1f)).height(4.dp).background(MaterialTheme.colorScheme.primary))
                         }
                         Spacer(Modifier.height(8.dp))
-                        Text("正在下载 ${state.progress}%")
+                        Text("正在下载 ${release.version} · ${state.progress}%")
                     }
                     state.message?.let { Text(it) }
                 }
@@ -38,7 +38,7 @@ fun UpdateDialog(state: UpdateState, updater: AppUpdater) {
             confirmButton = {
                 TextButton(enabled = !state.downloading, onClick = {
                     if (state.apk != null) updater.install() else updater.download()
-                }) { Text(if (state.apk != null) "安装更新" else "立即更新") }
+                }) { Text(if (state.apk != null) "安装 ${release.version}" else "下载 ${release.version}") }
             },
             dismissButton = {
                 TextButton(enabled = !state.downloading, onClick = { updater.dismiss(skip = true) }) { Text("跳过此版本") }

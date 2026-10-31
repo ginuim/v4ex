@@ -83,7 +83,7 @@ class AppUpdater(app: Application) : AndroidViewModel(app) {
                 val apk = withContext(Dispatchers.IO) {
                     val dir = File(getApplication<Application>().cacheDir, "updates").apply { mkdirs() }
                     dir.listFiles()?.forEach { it.delete() }
-                    val part = File(dir, "update.part")
+                    val part = File(dir, "${release.apkFileName()}.part")
                     try {
                         client.newCall(Request.Builder().url(release.url).build()).execute().use { response ->
                             check(response.isSuccessful) { "下载失败：${response.code}" }
@@ -106,7 +106,7 @@ class AppUpdater(app: Application) : AndroidViewModel(app) {
                             } }
                             check(digest.digest().joinToString("") { "%02x".format(it) }.equals(release.sha256, true)) { "安装包校验失败，请重新下载" }
                         }
-                        val target = File(dir, "V4EX.apk")
+                        val target = File(dir, release.apkFileName())
                         check(part.renameTo(target)) { "无法保存安装包" }
                         val pm = getApplication<Application>().packageManager
                         @Suppress("DEPRECATION")
@@ -117,6 +117,8 @@ class AppUpdater(app: Application) : AndroidViewModel(app) {
                         @Suppress("DEPRECATION")
                         check(archive.packageName == BuildConfig.APPLICATION_ID &&
                             archive.longVersionCodeCompat() == release.code.toLong() &&
+                            archive.versionName == release.version &&
+                            archive.longVersionCodeCompat() > installed.longVersionCodeCompat() &&
                             !archive.signatures.isNullOrEmpty() &&
                             archive.signatures?.toSet() == installed.signatures?.toSet()) { "安装包版本或签名不匹配" }
                         target
@@ -156,8 +158,13 @@ internal fun parseRelease(raw: String): AppRelease {
     require(url.startsWith("https://github.com/ginuim/v4ex/releases/download/")) { "安装包地址无效" }
     val sha = json.getString("sha256")
     require(sha.matches(Regex("[a-fA-F0-9]{64}"))) { "校验信息无效" }
-    return AppRelease(json.getInt("versionCode"), json.getString("versionName"), json.optString("notes"), url, sha)
+    val code = json.getInt("versionCode")
+    val version = json.getString("versionName")
+    require(code > 0 && version.matches(Regex("[A-Za-z0-9][A-Za-z0-9._+-]*"))) { "版本信息无效" }
+    return AppRelease(code, version, json.optString("notes"), url, sha)
 }
+
+internal fun AppRelease.apkFileName(): String = "V4EX-$version-$code.apk"
 
 @Suppress("DEPRECATION")
 private fun android.content.pm.PackageInfo.longVersionCodeCompat(): Long =
