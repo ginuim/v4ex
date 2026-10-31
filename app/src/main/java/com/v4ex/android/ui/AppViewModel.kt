@@ -69,6 +69,7 @@ data class TopicUi(
 )
 
 data class NodeTopicsUi(
+    val updating: Boolean = false,
     val node: String = "",
     val loading: Boolean = true,
     val topics: List<Topic> = emptyList(),
@@ -415,55 +416,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _nodes.value = _nodes.value.copy(query = q)
     }
 
+    private val nodeCache = com.v4ex.android.data.NodeTopicCache(java.io.File(getApplication<Application>().filesDir, "node-topics"))
+    private val _homeNode = MutableStateFlow(NodeTopicsUi())
+    val homeNode = _homeNode.asStateFlow()
+    private var homeNodeJob: kotlinx.coroutines.Job? = null
+    private var nodeJob: kotlinx.coroutines.Job? = null
+
+    fun loadHomeNode(node: String, more: Boolean = false) {
+        val current = _homeNode.value
+        if (more && (current.node != node || current.loading || current.updating || current.moreLoading || !current.canLoadMore)) return
+        homeNodeJob?.cancel()
+        homeNodeJob = loadCachedNode(_homeNode, node, more, false)
+    }
+
     fun loadNodeTopics(node: String) {
-        val hasToken = tokenValue.isNotBlank()
-        _nodeTopics.value = if (_nodeTopics.value.node == node) _nodeTopics.value.copy(loading = true, error = null) else NodeTopicsUi(node = node, loading = true)
-        viewModelScope.launch {
+        nodeJob?.cancel()
+        nodeJob = loadCachedNode(_nodeTopics, node, false, true)
+    }
+
+    private fun loadCachedNode(
+        state: MutableStateFlow<NodeTopicsUi>, node: String, more: Boolean, withDetail: Boolean,
+    ): kotlinx.coroutines.Job {
+        val previous = state.value
+        val pageNumber = if (more) previous.page + 1 else 1
+        val remembered = nodeCache.peek(node)
+        state.value = if (more) previous.copy(moreLoading = true, error = null)
+            else if (previous.node == node && previous.topics.isNotEmpty())
+                previous.copy(loading = false, updating = true, moreLoading = false, error = null)
+            else if (remembered != null) NodeTopicsUi(node = node, topics = remembered, loading = false, updating = true)
+            else NodeTopicsUi(node = node)
+        return viewModelScope.launch {
             try {
-                // v2 节点详情只有令牌能取；拿不到就不显示节点说明，不影响主题列表
-                val detail = if (hasToken) {
-                    withContext(Dispatchers.IO) { runCatching { api.node(node) }.getOrNull() }
-                } else {
-                    null
+                if (!more && state.value.topics.isEmpty()) {
+                    val cached = withContext(Dispatchers.IO) { nodeCache.read(node) }
+                    if (cached != null) state.value = NodeTopicsUi(
+                        node = node, topics = cached, loading = false, updating = true,
+                    )
                 }
-                val (list, page) = withContext(Dispatchers.IO) {
-                    if (hasToken) api.nodeTopicsPage(node, 1) else api.nodeTopics(node) to PageInfo(pages = 1)
+                val hasToken = tokenValue.isNotBlank()
+                val (items, page) = withContext(Dispatchers.IO) {
+                    if (hasToken) api.nodeTopicsPage(node, pageNumber)
+                    else api.nodeTopics(node) to PageInfo(pages = 1)
                 }
-                _nodeTopics.value = NodeTopicsUi(
-                    node = node,
-                    loading = false,
-                    topics = list,
-                    canLoadMore = hasToken && page.hasMore(1),
-                    hint = if (hasToken) null else "填写令牌后可以继续往下翻",
-                    detail = detail,
+                state.value = NodeTopicsUi(
+                    node = node, loading = false,
+                    topics = if (more) (previous.topics + items).distinctBy { it.id } else items,
+                    page = pageNumber, canLoadMore = hasToken && page.hasMore(pageNumber),
+                    hint = if (hasToken) null else "填写令牌后可继续翻页",
+                    detail = if (previous.node == node) previous.detail else null,
                 )
+                if (!more) withContext(Dispatchers.IO) { nodeCache.write(node, items) }
+                if (withDetail && hasToken) {
+                    val detail = withContext(Dispatchers.IO) { runCatching { api.node(node) }.getOrNull() }
+                    state.value = state.value.copy(detail = detail)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _nodeTopics.value = NodeTopicsUi(node = node, loading = false, error = friendly(e))
+                state.value = state.value.copy(loading = false, updating = false, moreLoading = false, error = friendly(e))
             }
         }
     }
 
     fun loadMoreNodeTopics() {
         val current = _nodeTopics.value
-        if (current.moreLoading || !current.canLoadMore || current.node.isBlank()) return
-        _nodeTopics.value = current.copy(moreLoading = true)
-        viewModelScope.launch {
-            try {
-                val next = current.page + 1
-                val (items, page) = withContext(Dispatchers.IO) {
-                    api.nodeTopicsPage(current.node, next)
-                }
-                val seen = current.topics.map { it.id }.toSet()
-                _nodeTopics.value = current.copy(
-                    topics = current.topics + items.filterNot { it.id in seen },
-                    page = next,
-                    moreLoading = false,
-                    canLoadMore = page.hasMore(next),
-                )
-            } catch (e: Exception) {
-                _nodeTopics.value = current.copy(moreLoading = false, error = friendly(e))
-            }
-        }
+        if (current.loading || current.updating || current.moreLoading || !current.canLoadMore || current.node.isBlank()) return
+        nodeJob?.cancel()
+        nodeJob = loadCachedNode(_nodeTopics, current.node, true, false)
     }
 
     // ----------------------------------------------------------------- topic

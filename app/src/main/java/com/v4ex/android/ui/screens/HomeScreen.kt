@@ -1,5 +1,9 @@
 package com.v4ex.android.ui.screens
 
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.zIndex
+import com.v4ex.android.data.hotAuthors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +19,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.selected
+import com.v4ex.android.data.HomeCategories
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -62,17 +73,15 @@ fun HomeScreen(
     readIds: Set<String>,
     unreadOnly: Boolean,
     onUnreadOnly: (Boolean) -> Unit,
-    hotExpanded: Boolean,
-    onHotExpanded: (Boolean) -> Unit,
     nodeCount: Int,
     me: Me?,
     rememberedUser: RememberedUser,
     refreshing: Boolean,
     updating: Boolean,
     cachedAt: Long?,
-    moreLoading: Boolean,
-    canLoadMore: Boolean,
-    hint: String?,
+    nodeState: com.v4ex.android.ui.NodeTopicsUi,
+    onSelectNode: (String) -> Unit,
+    onLoadMoreNode: (String) -> Unit,
     error: String?,
     onTopic: (Topic) -> Unit,
     onAuthor: (String) -> Unit,
@@ -80,15 +89,25 @@ fun HomeScreen(
     canCompose: Boolean,
     onCompose: () -> Unit,
     onRefresh: () -> Unit,
-    onLoadMore: () -> Unit,
 ) {
+    var hotExpanded by rememberSaveable { mutableStateOf(false) }
+    var categoryKey by rememberSaveable { mutableStateOf("tech") }
+    var selectedNode by rememberSaveable { mutableStateOf(HomeCategories.first().nodes.first().name) }
+    val category = HomeCategories.first { it.key == categoryKey }
+    val firstLoad = hot.isEmpty() && latest.isEmpty() && error == null
+    val nodeMatches = nodeState.node == selectedNode
+    val canLoadMore = nodeMatches && nodeState.canLoadMore && !nodeState.loading && !nodeState.updating && !nodeState.moreLoading && nodeState.error == null
+    val displayedTopics = if (nodeMatches) nodeState.topics else emptyList()
+    LaunchedEffect(selectedNode, firstLoad) {
+        if (!firstLoad && nodeState.node != selectedNode) onSelectNode(selectedNode)
+    }
     // 只看未读：在渲染层过滤，不改动 HomeUi 里的原始数据，
     // 所以关掉开关能立刻恢复，也不需要重新请求。
     val visibleHot = if (unreadOnly) hot.filter { it.id.toString() !in readIds } else hot
-    val visibleLatest = if (unreadOnly) latest.filter { it.id.toString() !in readIds } else latest
+    val visibleLatest = if (unreadOnly) displayedTopics.filter { it.id.toString() !in readIds } else displayedTopics
 
     // 滚到倒数第 4 个就开始加载下一页
-    val nearEnd by remember(canLoadMore) {
+    val nearEnd by remember(canLoadMore, selectedNode) {
         derivedStateOf {
             if (!canLoadMore) {
                 false
@@ -99,17 +118,16 @@ fun HomeScreen(
             }
         }
     }
-    LaunchedEffect(nearEnd, canLoadMore) {
-        if (nearEnd) onLoadMore()
+    LaunchedEffect(nearEnd, canLoadMore, selectedNode) {
+        if (nearEnd) onLoadMoreNode(selectedNode)
     }
 
     PullToRefreshBox(
         isRefreshing = refreshing,
-        onRefresh = onRefresh,
+        onRefresh = { onRefresh(); onSelectNode(selectedNode) },
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            val firstLoad = hot.isEmpty() && latest.isEmpty() && error == null
 
             item(key = "header") {
                 HomeHeader(
@@ -122,7 +140,7 @@ fun HomeScreen(
                     updating = updating,
                     cachedAt = cachedAt,
                     unreadOnly = unreadOnly,
-                    hiddenCount = (hot.size - visibleHot.size) + (latest.size - visibleLatest.size),
+                    hiddenCount = (hot.size - visibleHot.size) + (displayedTopics.size - visibleLatest.size),
                     onUnreadOnly = onUnreadOnly,
                     canCompose = canCompose,
                     onCompose = onCompose,
@@ -137,19 +155,12 @@ fun HomeScreen(
                 item(key = "loading") { LoadingBlock("正在读取热门和最新…") }
             }
 
-            if (visibleHot.isNotEmpty()) {
+            if (hot.isNotEmpty()) {
                 item(key = "sec-hot") {
-                    Row(
-                        Modifier.fillMaxWidth().semantics {
-                            stateDescription = if (hotExpanded) "已展开" else "已收起"
-                        }.clickable { onHotExpanded(!hotExpanded) }
-                            .padding(horizontal = 22.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("热门 ${visibleHot.size}", fontSize = 12.5.sp, color = Ink.Secondary)
-                        Spacer(Modifier.width(4.dp))
-                        DisclosureArrow(hotExpanded)
-                    }
+                    HotSummary(
+                        hot = hot, readIds = readIds, unreadOnly = unreadOnly,
+                        expanded = hotExpanded, onClick = { hotExpanded = !hotExpanded },
+                    )
                 }
                 if (hotExpanded) items(visibleHot, key = { "h${it.id}" }) { topic ->
                     TopicRow(
@@ -161,8 +172,32 @@ fun HomeScreen(
                 }
             }
 
+            if (!firstLoad) {
+                item(key = "categories") {
+                    HomeCategoryNavigation(
+                        categoryKey = categoryKey, selectedNode = selectedNode,
+                        onCategory = { key ->
+                            categoryKey = key
+                            selectedNode = HomeCategories.first { it.key == key }.nodes.first().name
+                        },
+                        onNode = { selectedNode = it },
+                    )
+                }
+                if (!nodeMatches || nodeState.loading) {
+                    item(key = "node-loading") { LoadingBlock("正在读取节点帖子…") }
+                } else if (nodeState.updating) {
+                    item(key = "node-updating") { SectionLabel("正在更新帖子…") }
+                } else if (nodeState.error != null) {
+                    item(key = "node-error") { ErrorLine(nodeState.error) { onSelectNode(selectedNode) } }
+                } else if (visibleLatest.isEmpty()) {
+                    item(key = "node-empty") {
+                        SectionLabel(if (displayedTopics.isEmpty()) "这个节点还没有帖子" else "这个节点的帖子都读过了")
+                    }
+                }
+            }
+
             if (visibleLatest.isNotEmpty()) {
-                item(key = "sec-new") { SectionLabel("最新 ${visibleLatest.size}") }
+                item(key = "sec-new") { SectionLabel("${category.nodes.firstOrNull { it.name == selectedNode }?.title.orEmpty()} ${visibleLatest.size}") }
                 items(visibleLatest, key = { "n${it.id}" }) { topic ->
                     TopicRow(
                         topic = topic,
@@ -175,9 +210,9 @@ fun HomeScreen(
                 item(key = "footer") {
                     ListFooter(
                         canLoadMore = canLoadMore,
-                        loading = moreLoading,
-                        hint = hint,
-                        onLoadMore = onLoadMore,
+                        loading = nodeState.moreLoading,
+                        hint = nodeState.hint,
+                        onLoadMore = { onLoadMoreNode(selectedNode) },
                     )
                 }
             }
@@ -311,5 +346,122 @@ private fun HomeHeader(
             )
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Website tabs are editorial collections, distinct from the node parent hierarchy. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HomeCategoryNavigation(
+    categoryKey: String, selectedNode: String,
+    onCategory: (String) -> Unit, onNode: (String) -> Unit,
+) {
+    var expanded by rememberSaveable(categoryKey) { mutableStateOf(false) }
+    val category = HomeCategories.firstOrNull { it.key == categoryKey } ?: HomeCategories.first()
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(HomeCategories, key = { it.key }) { item ->
+                val active = item.key == category.key
+                Text(
+                    item.title,
+                    fontSize = 13.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (active) Ink.OnFilterSelected else Ink.Secondary,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(if (active) Ink.FilterSelected else Color.Transparent)
+                        .semantics { selected = active }
+                        .clickable { onCategory(item.key) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            (if (expanded) category.nodes else category.nodes.take(4)).forEach { node ->
+                Text(
+                    node.title, fontSize = 12.sp,
+                    color = if (node.name == selectedNode) Ink.Primary else Ink.Secondary,
+                    fontWeight = if (node.name == selectedNode) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                        .background(Ink.ChipBg).semantics { selected = node.name == selectedNode }
+                        .clickable { onNode(node.name) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
+            if (category.nodes.size > 4) {
+                Text(
+                    if (expanded) "收起" else "更多",
+                    fontSize = 12.sp, color = Ink.Secondary,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                        .clickable { expanded = !expanded }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HotSummary(
+    hot: List<Topic>,
+    readIds: Set<String>,
+    unreadOnly: Boolean,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val authors = hotAuthors(hot, readIds, unreadOnly)
+    val shown = authors.take(5)
+    val unreadCount = hot.count { it.id.toString() !in readIds }
+    Row(
+        Modifier.fillMaxWidth()
+            .semantics { stateDescription = if (expanded) "热门已展开" else "热门已收起" }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (shown.isNotEmpty()) {
+            Box(Modifier.width((30 + (shown.size - 1) * 19).dp).height(30.dp)) {
+                shown.forEachIndexed { index, author ->
+                    Box(
+                        Modifier.offset(x = (index * 19).dp)
+                            .zIndex((shown.size - index).toFloat())
+                            .size(30.dp).clip(CircleShape).background(Ink.Surface)
+                            .padding(2.dp),
+                    ) {
+                        Avatar(
+                            author.member.avatar, author.member.username, 26.dp,
+                            Modifier.alpha(if (author.unread) 0.82f else 0.32f),
+                        )
+                    }
+                }
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (unreadOnly) "$unreadCount 篇未读热门" else "${hot.size} 篇热门",
+                    fontSize = 13.sp, lineHeight = 16.sp, color = Ink.Primary,
+                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+                )
+                Spacer(Modifier.width(4.dp))
+                DisclosureArrow(expanded)
+            }
+            Text(
+                when {
+                    unreadCount == 0 -> "热门都读过了"
+                    unreadOnly -> "只显示未读 · 点击${if (expanded) "收起" else "展开"}"
+                    else -> "$unreadCount 篇未读 · ${hot.size - unreadCount} 篇已读"
+                },
+                fontSize = 11.5.sp, lineHeight = 14.sp, color = Ink.Secondary,
+                style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+            )
+        }
     }
 }

@@ -81,7 +81,6 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     val favNodes by vm.favNodes.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val historyLoaded by vm.historyLoaded.collectAsStateWithLifecycle()
-    val hotCollapsedDay by vm.hotCollapsedDay.collectAsStateWithLifecycle()
     val unreadOnly by vm.unreadOnly.collectAsStateWithLifecycle()
     val threaded by vm.threaded.collectAsStateWithLifecycle()
     val rateLimit by vm.rateLimit.collectAsStateWithLifecycle()
@@ -109,6 +108,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     val readIds by vm.readIds.collectAsStateWithLifecycle()
     val homeState by vm.home.collectAsStateWithLifecycle()
     val nodeState by vm.nodeTopics.collectAsStateWithLifecycle()
+    val homeNode by vm.homeNode.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val hasToken = (token ?: "").isNotBlank()
@@ -231,17 +231,15 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     readIds = readIds,
                     unreadOnly = unreadOnly,
                     onUnreadOnly = vm::setUnreadOnly,
-                    hotExpanded = hotCollapsedDay != java.time.LocalDate.now().toString(),
-                    onHotExpanded = vm::setHotExpanded,
                     nodeCount = nodes.nodes.size,
                     me = me.me,
                     rememberedUser = rememberedUser,
                     refreshing = home.refreshing,
                     updating = home.updating,
                     cachedAt = home.cachedAt,
-                    moreLoading = home.moreLoading,
-                    canLoadMore = home.canLoadMore,
-                    hint = home.hint,
+                    nodeState = homeNode,
+                    onSelectNode = { vm.loadHomeNode(it) },
+                    onLoadMoreNode = { vm.loadHomeNode(it, more = true) },
                     error = home.error,
                     onTopic = { openTopic = it.id },
                     onNode = { openNode = it },
@@ -249,7 +247,6 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                         vm.refreshHome()
                         vm.loadMe()
                     },
-                    onLoadMore = vm::loadMoreLatest,
                     canCompose = permissions.canPublish,
                     onCompose = {
                         if (permissions.canPublish) {
