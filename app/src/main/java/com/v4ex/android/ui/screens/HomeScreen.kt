@@ -199,9 +199,6 @@ fun HomeScreen(
                             Spacer(Modifier.width(6.dp))
                             PixelGridLoader(size = 3.dp, gap = 1.dp, color = Ink.Secondary)
                         }
-                        if (visibleLatest.isNotEmpty()) {
-                            Text(" ${visibleLatest.size}", fontSize = 12.5.sp, color = Ink.Secondary)
-                        }
                     }
                 }
                 if (nodeMatches && nodeState.error != null) {
