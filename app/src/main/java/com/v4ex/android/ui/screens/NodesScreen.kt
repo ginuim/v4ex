@@ -373,9 +373,10 @@ fun NodeTopicsScreen(
     /** v2 节点详情（GET /nodes/:name），只有填了令牌才有；null 时这块整体不显示 */
     detail: NodeDetail? = null,
     nodeTitle: String = "",
+    updating: Boolean = false,
 ) {
     var pullRefreshing by remember(node) { mutableStateOf(false) }
-    LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
+    LaunchedEffect(loading, updating) { if (!loading && !updating) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
     val listState = rememberLazyListState()
     val nearEnd by remember(canLoadMore) {
@@ -389,8 +390,8 @@ fun NodeTopicsScreen(
             }
         }
     }
-    LaunchedEffect(nearEnd, canLoadMore, loading) {
-        if (nearEnd && !loading) onLoadMore()
+    LaunchedEffect(nearEnd, canLoadMore, loading, updating) {
+        if (nearEnd && !loading && !updating) onLoadMore()
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -415,7 +416,7 @@ fun NodeTopicsScreen(
                 Text("打开原网页", fontSize = 12.sp, color = Ink.Secondary)
             }
         }
-        PullToRefreshBox(isRefreshing = pullRefreshing, onRefresh = { if (!loading) { pullRefreshing = true; onRetry() } }, modifier = Modifier.fillMaxSize()) {
+        PullToRefreshBox(isRefreshing = pullRefreshing, onRefresh = { if (!loading && !updating) { pullRefreshing = true; onRetry() } }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item(key = "node-info") {
                 // v2 节点详情：节点说明 + 主题数/关注数。只有令牌能取到；取不到就整块不占位。

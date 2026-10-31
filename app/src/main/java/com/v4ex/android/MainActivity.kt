@@ -202,6 +202,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     topics = nodeState.topics,
                     readIds = readIds,
                     loading = nodeState.loading,
+                    updating = nodeState.updating,
                     moreLoading = nodeState.moreLoading,
                     canLoadMore = nodeState.canLoadMore,
                     hint = nodeState.hint,
