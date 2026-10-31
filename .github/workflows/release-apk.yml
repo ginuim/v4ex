@@ -64,49 +64,34 @@ jobs:
       - name: Test and build signed release
         run: bash ./gradlew --no-daemon testReleaseUnitTest assembleRelease
 
-      - name: Verify and prepare APK
+      - name: Verify APK and generate versioned release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_*.py'
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
-          mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/V4EX.apk
-          cd dist
-          sha256sum V4EX.apk > V4EX.apk.sha256
+          gh release view "$RELEASE_TAG" --json body > "$RUNNER_TEMP/release.json"
+          python3 scripts/prepare_release.py \
+            --apk app/build/outputs/apk/release/app-release.apk \
+            --metadata app/build/outputs/apk/release/output-metadata.json \
+            --aapt "$ANDROID_HOME/build-tools/35.0.0/aapt" \
+            --tag "$RELEASE_TAG" --repository "$GH_REPO" \
+            --release "$RUNNER_TEMP/release.json" --destination dist
 
-      - name: Generate update metadata
+      - name: Upload APK before publishing update metadata
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+        shell: bash
         run: |
-          gh release view "$RELEASE_TAG" --json body > dist/release.json
-          python3 - <<'PYTHON'
-          import hashlib, json, os
-          from pathlib import Path
-          from urllib.parse import quote
-          output = json.loads(Path("app/build/outputs/apk/release/output-metadata.json").read_text())["elements"][0]
-          filename = "V4EX-" + output["versionName"] + ".apk"
-          Path("dist/V4EX.apk").rename(Path("dist") / filename)
-          checksum = hashlib.sha256((Path("dist") / filename).read_bytes()).hexdigest()
-          Path("dist/V4EX.apk.sha256").unlink()
-          (Path("dist") / (filename + ".sha256")).write_text(checksum + "  " + filename + "\n")
-          metadata = {
-              "versionCode": output["versionCode"],
-              "versionName": output["versionName"],
-              "notes": json.loads(Path("dist/release.json").read_text())["body"],
-              "apkUrl": "https://github.com/" + os.environ["GH_REPO"] + "/releases/download/" + quote(os.environ["RELEASE_TAG"], safe="") + "/" + quote(filename, safe=""),
-              "sha256": checksum,
-          }
-          Path("dist/update.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
-          PYTHON
-
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" dist/*.apk dist/*.apk.sha256 dist/update.json --clobber
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" dist/*.apk dist/*.apk.sha256 --clobber
+          gh release upload "$RELEASE_TAG" dist/update.json --clobber
 
       - name: Remove signing key
         if: always()

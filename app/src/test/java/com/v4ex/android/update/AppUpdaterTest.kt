@@ -32,4 +32,29 @@ class AppUpdaterTest {
     fun rejectsUnsafeVersionInFilename() {
         parseRelease(metadata().replace("0.6.0", "../app"))
     }
+    private fun github(tag: String = "v0.6.0", apk: String = "https://github.com/ginuim/v4ex/releases/download/v0.6.0/V4EX-0.6.0-10.apk") =
+        org.json.JSONObject().put("tag_name", tag).put("assets", org.json.JSONArray().put(org.json.JSONObject().put("browser_download_url", apk)))
+
+    @Test fun acceptsConsistentVersionedReleaseAndRetainsLegacyMetadataSupport() {
+        val url = "https://github.com/ginuim/v4ex/releases/download/v0.6.0/V4EX-0.6.0-10.apk"
+        val json = org.json.JSONObject(metadata(url = url)).put("apkFileName", "V4EX-0.6.0-10.apk")
+        assertEquals("V4EX-0.6.0-10.apk", parseGithubRelease(github(), json.toString()).apkFileName())
+        assertEquals(10, parseRelease(metadata()).code)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMetadataFromDifferentRelease() {
+        parseGithubRelease(github(tag = "v0.6.1"), metadata())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMissingApkAsset() {
+        val json = github().put("assets", org.json.JSONArray())
+        parseGithubRelease(json, metadata(url = "https://github.com/ginuim/v4ex/releases/download/v0.6.0/V4EX-0.6.0-10.apk"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsFileNameThatBelongsToDifferentBuild() {
+        parseRelease(org.json.JSONObject(metadata()).put("apkFileName", "V4EX-0.6.0-9.apk").toString())
+    }
 }

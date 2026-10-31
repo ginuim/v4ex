@@ -36,12 +36,12 @@ fun UpdateDialog(state: UpdateState, updater: AppUpdater) {
                 }
             },
             confirmButton = {
-                TextButton(enabled = !state.downloading, onClick = {
+                TextButton(enabled = !state.downloading && !state.verifying, onClick = {
                     if (state.apk != null) updater.install() else updater.download()
                 }) { Text(if (state.apk != null) "安装 ${release.version}" else "下载 ${release.version}") }
             },
             dismissButton = {
-                TextButton(enabled = !state.downloading, onClick = { updater.dismiss(skip = true) }) { Text("跳过此版本") }
+                TextButton(enabled = !state.downloading && !state.verifying, onClick = { updater.dismiss(skip = true) }) { Text("跳过此版本") }
             },
         )
     } else if (state.message != null) {
