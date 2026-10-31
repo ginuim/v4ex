@@ -59,6 +59,7 @@ import com.v4ex.android.ui.Avatar
 import com.v4ex.android.ui.ErrorLine
 import com.v4ex.android.ui.InlineChip
 import com.v4ex.android.ui.ListFooter
+import com.v4ex.android.ui.PixelGridLoader
 import com.v4ex.android.ui.LoadingBlock
 import com.v4ex.android.ui.SectionLabel
 import com.v4ex.android.ui.TopicRow
@@ -176,6 +177,7 @@ fun HomeScreen(
                 item(key = "categories") {
                     HomeCategoryNavigation(
                         categoryKey = categoryKey, selectedNode = selectedNode,
+                        nodeLoading = !nodeMatches || nodeState.loading || nodeState.updating || nodeState.moreLoading,
                         onCategory = { key ->
                             categoryKey = key
                             selectedNode = HomeCategories.first { it.key == key }.nodes.first().name
@@ -183,13 +185,9 @@ fun HomeScreen(
                         onNode = { selectedNode = it },
                     )
                 }
-                if (!nodeMatches || nodeState.loading) {
-                    item(key = "node-loading") { LoadingBlock("正在读取节点帖子…") }
-                } else if (nodeState.updating) {
-                    item(key = "node-updating") { SectionLabel("正在更新帖子…") }
-                } else if (nodeState.error != null) {
+                if (nodeMatches && nodeState.error != null) {
                     item(key = "node-error") { ErrorLine(nodeState.error) { onSelectNode(selectedNode) } }
-                } else if (visibleLatest.isEmpty()) {
+                } else if (nodeMatches && !nodeState.loading && !nodeState.updating && visibleLatest.isEmpty()) {
                     item(key = "node-empty") {
                         SectionLabel(if (displayedTopics.isEmpty()) "这个节点还没有帖子" else "这个节点的帖子都读过了")
                     }
@@ -353,7 +351,7 @@ private fun HomeHeader(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomeCategoryNavigation(
-    categoryKey: String, selectedNode: String,
+    categoryKey: String, selectedNode: String, nodeLoading: Boolean,
     onCategory: (String) -> Unit, onNode: (String) -> Unit,
 ) {
     var expanded by rememberSaveable(categoryKey) { mutableStateOf(false) }
@@ -384,15 +382,29 @@ private fun HomeCategoryNavigation(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             (if (expanded) category.nodes else category.nodes.take(4)).forEach { node ->
-                Text(
-                    node.title, fontSize = 12.sp,
-                    color = if (node.name == selectedNode) Ink.Primary else Ink.Secondary,
-                    fontWeight = if (node.name == selectedNode) FontWeight.SemiBold else FontWeight.Normal,
+                Row(
                     modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(Ink.ChipBg).semantics { selected = node.name == selectedNode }
+                        .background(Ink.ChipBg).semantics {
+                            selected = node.name == selectedNode
+                            if (node.name == selectedNode && nodeLoading) stateDescription = "正在加载"
+                        }
                         .clickable { onNode(node.name) }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        node.title, fontSize = 12.sp,
+                        color = if (node.name == selectedNode) Ink.Primary else Ink.Secondary,
+                        fontWeight = if (node.name == selectedNode) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                    // Keep the same footprint while loading changes so chips never reflow.
+                    Spacer(Modifier.width(4.dp))
+                    Box(Modifier.size(8.dp), contentAlignment = Alignment.Center) {
+                        if (node.name == selectedNode && nodeLoading) {
+                            PixelGridLoader(size = 2.dp, gap = 1.dp, color = Ink.Secondary)
+                        }
+                    }
+                }
             }
             if (category.nodes.size > 4) {
                 Text(
