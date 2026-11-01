@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,19 +51,22 @@ fun NoticesScreen(
     onOpenTopic: (Notice) -> Unit,
     onClearAll: () -> Unit,
 ) {
+    val unread = remember(items) { items.filterNot { it.read } }
+    val read = remember(items) { items.filter { it.read } }
+
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(start = 22.dp, end = 14.dp, top = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("通知", fontSize = 24.sp, fontWeight = FontWeight.Medium, color = Ink.Primary)
-            if (hasToken && items.isNotEmpty()) {
+            if (hasToken && unread.isNotEmpty()) {
                 Spacer(Modifier.size(8.dp))
-                Text("${items.size}", fontSize = 13.sp, color = Ink.Tertiary)
+                Text("${unread.size} 未读", fontSize = 13.sp, color = Ink.Tertiary)
             }
             Spacer(Modifier.weight(1f))
             if (hasToken) {
-                if (items.isNotEmpty()) {
+                if (unread.isNotEmpty()) {
                     Text(
                         "全部已读",
                         modifier = Modifier
@@ -94,12 +98,30 @@ fun NoticesScreen(
                 art = EmptyArt.Notices,
             )
             else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(items, key = { it.id }) { notice ->
+                item(key = "group-unread") {
+                    NoticeGroupHeader(
+                        title = "未读",
+                        trailing = if (unread.isEmpty()) "没有新提醒" else "${unread.size}",
+                    )
+                }
+                items(unread, key = { it.id }) { notice ->
                     NoticeRow(
                         notice = notice,
                         onAuthor = { onAuthor(notice.member) },
                         onClick = { onOpenTopic(notice) },
                     )
+                }
+                if (read.isNotEmpty()) {
+                    item(key = "group-read") {
+                        NoticeGroupHeader(title = "已读", trailing = "${read.size}")
+                    }
+                    items(read, key = { it.id }) { notice ->
+                        NoticeRow(
+                            notice = notice,
+                            onAuthor = { onAuthor(notice.member) },
+                            onClick = { onOpenTopic(notice) },
+                        )
+                    }
                 }
                 item {
                     ListFooter(
@@ -112,6 +134,20 @@ fun NoticesScreen(
                 item { Spacer(Modifier.height(110.dp)) }
             }
         }
+    }
+}
+
+@Composable
+private fun NoticeGroupHeader(title: String, trailing: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Ink.Secondary)
+        Spacer(Modifier.size(8.dp))
+        Text(trailing, fontSize = 12.sp, color = Ink.Tertiary)
     }
 }
 

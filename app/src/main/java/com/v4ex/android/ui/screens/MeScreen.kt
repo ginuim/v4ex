@@ -58,6 +58,7 @@ fun MeScreen(
     me: Me?,
     error: String?,
     historyCount: Int,
+    bookmarkCount: Int,
     tokenInfo: TokenInfo?,
     rateLimit: RateLimit?,
     creatingToken: Boolean,
@@ -65,6 +66,7 @@ fun MeScreen(
     createdToken: TokenInfo?,
     createError: String?,
     onOpenHistory: () -> Unit,
+    onOpenBookmarks: () -> Unit,
     onAuth: () -> Unit,
     onSignOut: () -> Unit,
     onCreateToken: (scope: String, expirationSeconds: Int) -> Unit,
@@ -147,6 +149,10 @@ fun MeScreen(
 
         Spacer(Modifier.height(26.dp))
         SectionLabel("阅读")
+        ActionRow(
+            if (bookmarkCount > 0) "收藏的帖子 · $bookmarkCount" else "收藏的帖子",
+            onOpenBookmarks,
+        )
         ActionRow(
             if (historyCount > 0) "浏览历史 · $historyCount" else "浏览历史",
             onOpenHistory,

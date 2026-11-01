@@ -24,6 +24,7 @@ class Prefs(private val context: Context) {
     private val readKey = stringPreferencesKey("read_ids")
     private val favNodesKey = stringPreferencesKey("fav_nodes")
     private val historyKey = stringPreferencesKey("history")
+    private val bookmarksKey = stringPreferencesKey("bookmarks")
     private val hotCollapsedDayKey = stringPreferencesKey("hot_collapsed_day")
     val hotCollapsedDay: Flow<String> = context.store.data.map { it[hotCollapsedDayKey].orEmpty() }
     suspend fun setHotCollapsedDay(day: String) { context.store.edit { it[hotCollapsedDayKey] = day } }
@@ -72,6 +73,16 @@ class Prefs(private val context: Context) {
 
     suspend fun clearHomeCache() {
         context.store.edit { it.remove(homeCacheKey) }
+    }
+
+    /** 通知本地留存（JSON，见 [NoticeHistory]），按令牌摘要分账户。 */
+    private fun noticeKey(owner: String) = stringPreferencesKey("notice_history_$owner")
+
+    fun noticeHistory(owner: String): Flow<String> =
+        context.store.data.map { it[noticeKey(owner)].orEmpty() }
+
+    suspend fun saveNoticeHistory(owner: String, raw: String) {
+        context.store.edit { it[noticeKey(owner)] = raw }
     }
 
     /** 已读主题 id，最新的排在后面，最多留 800 条。 */
@@ -129,6 +140,26 @@ class Prefs(private val context: Context) {
             list.add(0, entry.toLine())
             if (list.size > MAX_HISTORY) list.subList(MAX_HISTORY, list.size).clear()
             prefs[historyKey] = list.joinToString("\n")
+        }
+    }
+
+    /** 收藏的帖子，最近收藏的在前。编解码见 [Bookmarks]。 */
+    val bookmarks: Flow<List<Bookmark>> = context.store.data.map { prefs ->
+        Bookmarks.decode(prefs[bookmarksKey].orEmpty())
+    }
+
+    /** 收藏 / 取消收藏。 */
+    suspend fun toggleBookmark(bookmark: Bookmark) {
+        context.store.edit { prefs ->
+            val list = Bookmarks.decode(prefs[bookmarksKey].orEmpty())
+            prefs[bookmarksKey] = Bookmarks.encode(Bookmarks.toggle(list, bookmark))
+        }
+    }
+
+    suspend fun removeBookmark(id: Int) {
+        context.store.edit { prefs ->
+            val list = Bookmarks.decode(prefs[bookmarksKey].orEmpty())
+            prefs[bookmarksKey] = Bookmarks.encode(Bookmarks.remove(list, id))
         }
     }
 

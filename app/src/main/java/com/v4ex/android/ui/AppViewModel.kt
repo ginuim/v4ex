@@ -5,12 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.v4ex.android.data.Api
 import com.v4ex.android.data.ApiException
+import com.v4ex.android.data.Bookmark
 import com.v4ex.android.data.HistoryEntry
 import com.v4ex.android.data.HomeCacheCodec
 import com.v4ex.android.data.Me
 import com.v4ex.android.data.MemberPermissions
 import com.v4ex.android.data.NodeDetail
 import com.v4ex.android.data.Notice
+import com.v4ex.android.data.NoticeHistory
 import com.v4ex.android.data.PageInfo
 import com.v4ex.android.ui.theme.ThemeMode
 import com.v4ex.android.data.Prefs
@@ -89,7 +91,10 @@ data class NoticesUi(
     val page: Int = 1,
     val moreLoading: Boolean = false,
     val canLoadMore: Boolean = false,
-)
+) {
+    /** 角标与标题计数只算未读；items 里还包含本机留存的已读通知。 */
+    val unreadCount: Int get() = items.count { !it.read }
+}
 
 data class MemberUi(
     val username: String = "",
@@ -218,6 +223,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _historyLoaded = MutableStateFlow(false)
     val historyLoaded = _historyLoaded.asStateFlow()
 
+    /** 收藏的帖子（纯本地，最近收藏的在前）。V2EX 没有收藏端点。 */
+    private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
+    val bookmarks = _bookmarks.asStateFlow()
+
+    /** 收藏是否已经从磁盘读出来了，同历史：没读完不能说「还没有收藏」。 */
+    private val _bookmarksLoaded = MutableStateFlow(false)
+    val bookmarksLoaded = _bookmarksLoaded.asStateFlow()
+
     /** 首页只看未读。过滤在 UI 层做，不动原始列表，关掉开关立刻恢复。 */
     private val _hotCollapsedDay = MutableStateFlow("")
     val hotCollapsedDay = _hotCollapsedDay.asStateFlow()
@@ -256,6 +269,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.toggleFavNode(name, title) }
     }
 
+    /** 收藏 / 取消收藏当前打开的帖子。帖子没加载出来时什么都不做。 */
+    fun toggleBookmark() {
+        _topic.value.topic?.let { toggleBookmarkTopic(it) }
+    }
+
+    /** 收藏 / 取消收藏任意一个帖子（列表左滑菜单用）。已收藏则取消。 */
+    fun toggleBookmarkTopic(t: Topic) {
+        val bookmark = Bookmark(
+            id = t.id,
+            title = t.title,
+            nodeName = t.node.name,
+            nodeTitle = t.node.title,
+            author = t.member.username,
+            replies = t.replies,
+            savedAt = System.currentTimeMillis(),
+        )
+        viewModelScope.launch { prefs.toggleBookmark(bookmark) }
+    }
+
+    fun removeBookmark(id: Int) {
+        viewModelScope.launch { prefs.removeBookmark(id) }
+    }
+
     init {
         viewModelScope.launch {
             prefs.themeMode.collect { _themeMode.value = ThemeMode.fromStored(it) }
@@ -270,6 +306,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             prefs.history.collect {
                 _history.value = it
                 _historyLoaded.value = true
+            }
+        }
+        viewModelScope.launch {
+            prefs.bookmarks.collect {
+                _bookmarks.value = it
+                _bookmarksLoaded.value = true
             }
         }
         viewModelScope.launch { prefs.hotCollapsedDay.collect { _hotCollapsedDay.value = it } }
@@ -642,20 +684,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loadNoticesPage(1)
     }
 
+    private suspend fun loadNoticeCache(owner: String): List<Notice> =
+        NoticeHistory.decode(prefs.noticeHistory(owner).first())
+
+    /** 每次改动都落盘，已读状态才能跨重启保留。 */
+    private fun persistNotices(owner: String, items: List<Notice>) {
+        viewModelScope.launch {
+            prefs.saveNoticeHistory(owner, NoticeHistory.encode(items))
+        }
+    }
+
     private fun loadNoticesPage(page: Int) {
-        if (tokenValue.isBlank()) return
+        val token = tokenValue
+        if (token.isBlank()) return
+        val owner = NoticeHistory.ownerOf(token)
         _notices.value = _notices.value.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
+                // 先用本机留存秒开，再静默对账服务端的未读。
+                if (_notices.value.items.isEmpty()) {
+                    val cached = loadNoticeCache(owner)
+                    if (tokenValue != token) return@launch
+                    _notices.value = _notices.value.copy(items = cached)
+                }
                 val (list, info) = withContext(Dispatchers.IO) { api.notices(page) }
+                if (tokenValue != token) return@launch
+                val floor = if (page == 1) NoticeHistory.reconcileFloor(list, info.perPage) else null
+                val merged = NoticeHistory.merge(_notices.value.items, list, floor)
                 _notices.value = NoticesUi(
                     loading = false,
-                    items = list,
+                    items = merged,
                     page = page,
                     canLoadMore = info.hasMore(page),
                 )
+                persistNotices(owner, merged)
             } catch (e: Exception) {
-                _notices.value = _notices.value.copy(loading = false, error = friendly(e))
+                if (tokenValue == token) {
+                    _notices.value = _notices.value.copy(loading = false, error = friendly(e))
+                }
             }
         }
     }
@@ -664,55 +730,74 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMoreNotices() {
         val current = _notices.value
         if (current.moreLoading || !current.canLoadMore) return
+        val token = tokenValue
+        val owner = NoticeHistory.ownerOf(token)
         _notices.value = current.copy(moreLoading = true)
         viewModelScope.launch {
             try {
                 val next = current.page + 1
                 val (list, info) = withContext(Dispatchers.IO) { api.notices(next) }
-                val seen = current.items.map { it.id }.toSet()
-                _notices.value = current.copy(
-                    items = current.items + list.filterNot { it.id in seen },
+                if (tokenValue != token) return@launch
+                // 翻页不做已读对账：只看到了一部分未读，判断不了哪些已经在网页上读过。
+                val merged = NoticeHistory.merge(_notices.value.items, list, null)
+                _notices.value = _notices.value.copy(
+                    items = merged,
                     page = next,
                     moreLoading = false,
                     canLoadMore = info.hasMore(next),
                 )
+                persistNotices(owner, merged)
             } catch (e: Exception) {
-                _notices.value = current.copy(moreLoading = false, error = friendly(e))
+                if (tokenValue == token) {
+                    _notices.value = _notices.value.copy(moreLoading = false, error = friendly(e))
+                }
             }
         }
     }
 
     /**
-     * 点开一条通知 = 已读。先从列表里摘掉（角标立刻减一），再异步同步到服务端；
-     * 服务端失败就整体回滚，避免「本地看不见、下次刷新又冒出来」。
+     * 点开一条通知 = 已读。先在本地标记（保留在列表里，变成已读样式），再同步服务端；
+     * 服务端失败就回滚成未读，避免「看着已读、其实还在服务端」。
      */
     fun clearNotice(id: Int) {
-        if (tokenValue.isBlank()) return
-        val before = _notices.value.items
-        if (before.none { it.id == id }) return
-        _notices.value = _notices.value.copy(items = before.filterNot { it.id == id })
+        val token = tokenValue
+        if (token.isBlank()) return
+        val owner = NoticeHistory.ownerOf(token)
+        val target = _notices.value.items.firstOrNull { it.id == id } ?: return
+        if (target.read) return
+        val marked = NoticeHistory.markRead(_notices.value.items, setOf(id))
+        _notices.value = _notices.value.copy(items = marked)
+        persistNotices(owner, marked)
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching { api.clearNotice(id) }.getOrDefault(false)
             }
-            if (!ok) {
-                _notices.value = _notices.value.copy(items = before)
+            if (!ok && tokenValue == token) {
+                val rolled = NoticeHistory.markUnread(_notices.value.items, setOf(id))
+                _notices.value = _notices.value.copy(items = rolled)
+                persistNotices(owner, rolled)
             }
         }
     }
 
-    /** 全部已读：本地立刻清空角标，服务端逐条删；删失败的不回滚，下次刷新会重新出现。 */
+    /** 全部已读：本地立刻全部标记已读，再逐条同步服务端；失败的那几条回滚成未读。 */
     fun clearAllNotices() {
-        if (tokenValue.isBlank()) return
-        val before = _notices.value.items
-        if (before.isEmpty()) return
-        _notices.value = _notices.value.copy(items = emptyList())
+        val token = tokenValue
+        if (token.isBlank()) return
+        val owner = NoticeHistory.ownerOf(token)
+        val unreadIds = _notices.value.items.filterNot { it.read }.map { it.id }
+        if (unreadIds.isEmpty()) return
+        val marked = NoticeHistory.markRead(_notices.value.items, unreadIds.toSet())
+        _notices.value = _notices.value.copy(items = marked)
+        persistNotices(owner, marked)
         viewModelScope.launch {
             val failed = withContext(Dispatchers.IO) {
-                before.filterNot { n -> runCatching { api.clearNotice(n.id) }.getOrDefault(false) }
+                unreadIds.filterNot { id -> runCatching { api.clearNotice(id) }.getOrDefault(false) }
             }
-            if (failed.isNotEmpty()) {
-                _notices.value = _notices.value.copy(items = failed)
+            if (failed.isNotEmpty() && tokenValue == token) {
+                val rolled = NoticeHistory.markUnread(_notices.value.items, failed.toSet())
+                _notices.value = _notices.value.copy(items = rolled)
+                persistNotices(owner, rolled)
             }
         }
     }

@@ -36,21 +36,22 @@ fun PublishDialog(
     error: String?,
     onDismiss: () -> Unit,
     onPublish: (String, String, String, String) -> Unit,
+    initialContent: String = "",
 ) {
     var node by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
-    var content by rememberSaveable { mutableStateOf("") }
+    var content by rememberSaveable(replyTopicId, initialContent) { mutableStateOf(initialContent) }
     var markdown by rememberSaveable { mutableStateOf(true) }
     var discard by remember { mutableStateOf(false) }
     val replying = replyTopicId != null
     val contentLimit = if (replying) 10000 else 20000
     val contentLength = content.codePointCount(0, content.length)
     val titleLength = title.trim().codePointCount(0, title.trim().length)
-    val valid = contentLength <= contentLimit && if (replying) content.isNotBlank() else
+    val valid = contentLength <= contentLimit && if (replying) content.isNotBlank() && content.trim() != initialContent.trim() else
         node.trim().matches(Regex("[A-Za-z0-9_-]+")) && titleLength in 1..120
     val close = {
         if (!sending) {
-            if (node.isNotBlank() || title.isNotBlank() || content.isNotBlank()) discard = true
+            if (node.isNotBlank() || title.isNotBlank() || (content.isNotBlank() && content != initialContent)) discard = true
             else onDismiss()
         }
     }
@@ -70,7 +71,7 @@ fun PublishDialog(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text(if (replying) "回复 #$replyTopicId" else "发布主题", fontSize = 24.sp, color = Ink.Primary)
+                Text(if (replying) initialContent.trim().takeIf { it.isNotEmpty() }?.let { "回复 $it" } ?: "回复 #$replyTopicId" else "发布主题", fontSize = 24.sp, color = Ink.Primary)
                 Text(
                     "需要 V2EX PRO。发布仍受节点权限和频率限制，并按站点规则消耗铜币。",
                     fontSize = 13.sp, lineHeight = 20.sp, color = Ink.Secondary,

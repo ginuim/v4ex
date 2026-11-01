@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.v4ex.android.ui.AppViewModel
 import com.v4ex.android.ui.PublishDialog
 import com.v4ex.android.ui.BottomBar
+import com.v4ex.android.ui.screens.BookmarksScreen
 import com.v4ex.android.ui.screens.HistoryScreen
 import com.v4ex.android.ui.screens.HomeScreen
 import com.v4ex.android.ui.screens.MeScreen
@@ -81,6 +82,9 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     val favNodes by vm.favNodes.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val historyLoaded by vm.historyLoaded.collectAsStateWithLifecycle()
+    val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
+    val bookmarkIds = remember(bookmarks) { bookmarks.mapTo(HashSet()) { it.id } }
+    val bookmarksLoaded by vm.bookmarksLoaded.collectAsStateWithLifecycle()
     val unreadOnly by vm.unreadOnly.collectAsStateWithLifecycle()
     val threaded by vm.threaded.collectAsStateWithLifecycle()
     val rateLimit by vm.rateLimit.collectAsStateWithLifecycle()
@@ -90,8 +94,10 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     var openNode by rememberSaveable { mutableStateOf<String?>(null) }
     var openMember by rememberSaveable { mutableStateOf<String?>(null) }
     var openHistory by rememberSaveable { mutableStateOf(false) }
+    var openBookmarks by rememberSaveable { mutableStateOf(false) }
     var composeOpen by rememberSaveable { mutableStateOf(false) }
     var replyTo by rememberSaveable { mutableStateOf<Int?>(null) }
+    var replyPrefix by rememberSaveable { mutableStateOf("") }
     val publish by vm.publish.collectAsStateWithLifecycle()
     LaunchedEffect(publish.completedTopicId) {
         publish.completedTopicId?.let { id ->
@@ -131,17 +137,18 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     }
 
     BackHandler(
-        enabled = openTopic != null || openNode != null || openMember != null || openHistory,
+        enabled = openTopic != null || openNode != null || openMember != null || openHistory || openBookmarks,
     ) {
         // 返回顺序必须和「显示顺序」相反，一层一层退：
-        // 个人页 → 帖子页 → 节点页 → 浏览历史 → 首页/我的。
+        // 个人页 → 帖子页 → 节点页 → 浏览历史 / 收藏 → 首页/我的。
         // 历史页只是从「我的」点开的子页；从历史点进帖子时它留在栈里（被帖子页盖住），
-        // 所以帖子返回要回到历史，而不是直接掉回「我的」。
+        // 所以帖子返回要回到历史，而不是直接掉回「我的」。收藏页同理。
         when {
             openMember != null -> openMember = null
             openTopic != null -> openTopic = null
             openNode != null -> openNode = null
             openHistory -> openHistory = false
+            openBookmarks -> openBookmarks = false
         }
     }
 
@@ -177,6 +184,8 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onToggleThreaded = { vm.setThreaded(!threaded) },
                     onBack = { openTopic = null },
                     onRetry = { openTopic?.let { vm.loadTopic(it) } },
+                    bookmarked = topic.topic?.let { t -> bookmarks.any { it.id == t.id } } ?: false,
+                    onToggleBookmark = vm::toggleBookmark,
                     onAuthor = { openMember = it },
                     onNode = {
                         openNode = it
@@ -186,9 +195,10 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onSticky = vm::setSticky,
                     onBoost = vm::boostTopic,
                     onDismissAction = vm::dismissTopicAction,
-                    onReply = {
+                    onReply = { reply ->
                         if (permissions.canPublish) {
                             vm.resetPublish()
+                            replyPrefix = reply?.let { "@${it.member.username} #${it.floor} " }.orEmpty()
                             replyTo = topic.topic?.id
                             composeOpen = replyTo != null
                         }
@@ -201,6 +211,8 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                         ?: favNodes.firstOrNull { it.first == openNode }?.second.orEmpty(),
                     topics = nodeState.topics,
                     readIds = readIds,
+                    bookmarkIds = bookmarkIds,
+                    onToggleBookmark = vm::toggleBookmarkTopic,
                     loading = nodeState.loading,
                     updating = nodeState.updating,
                     moreLoading = nodeState.moreLoading,
@@ -225,6 +237,14 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onClearAll = vm::clearHistory,
                 )
 
+                openBookmarks -> BookmarksScreen(
+                    items = bookmarks,
+                    loaded = bookmarksLoaded,
+                    onBack = { openBookmarks = false },
+                    onOpen = { entry -> openTopic = entry.id },
+                    onRemove = vm::removeBookmark,
+                )
+
                 tab == 0 -> HomeScreen(
                     listState = homeList,
                     hot = home.hot,
@@ -243,6 +263,8 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     onLoadMoreNode = { vm.loadHomeNode(it, more = true) },
                     error = home.error,
                     onTopic = { openTopic = it.id },
+                    bookmarkIds = bookmarkIds,
+                    onToggleBookmark = vm::toggleBookmarkTopic,
                     onNode = { openNode = it },
                     onRefresh = {
                         vm.refreshHome()
@@ -304,6 +326,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     me = me.me,
                     error = me.error,
                     historyCount = history.size,
+                    bookmarkCount = bookmarks.size,
                     tokenInfo = me.tokenInfo,
                     rateLimit = rateLimit,
                     creatingToken = me.creatingToken,
@@ -311,6 +334,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                     createdToken = me.createdToken,
                     createError = me.createError,
                     onOpenHistory = { openHistory = true },
+                    onOpenBookmarks = { openBookmarks = true },
                     onAuth = { authDialog = true },
                     onSignOut = { vm.saveToken("") },
                     onCreateToken = { scope, seconds -> vm.createToken(scope, seconds) },
@@ -323,7 +347,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
             }
         }
 
-        if (openTopic == null && openNode == null && openMember == null && !openHistory) {
+        if (openTopic == null && openNode == null && openMember == null && !openHistory && !openBookmarks) {
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -332,7 +356,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
             ) {
                 BottomBar(
                     selected = tab,
-                    unread = notices.items.size,
+                    unread = notices.unreadCount,
                     onSelect = { index ->
                         tab = index
                         when (index) {
@@ -354,6 +378,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     if (composeOpen && (permissions.canPublish || publish.sending)) {
         PublishDialog(
             replyTopicId = replyTo,
+            initialContent = if (replyTo != null) replyPrefix else "",
             nodes = nodes.nodes,
             nodesLoading = nodes.loading,
             nodesError = nodes.error,

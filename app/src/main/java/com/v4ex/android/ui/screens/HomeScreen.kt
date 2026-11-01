@@ -62,7 +62,8 @@ import com.v4ex.android.ui.ListFooter
 import com.v4ex.android.ui.PixelGridLoader
 import com.v4ex.android.ui.LoadingBlock
 import com.v4ex.android.ui.SectionLabel
-import com.v4ex.android.ui.TopicRow
+import com.v4ex.android.ui.SwipeTopicRow
+import com.v4ex.android.ui.rememberSwipeRowController
 import com.v4ex.android.ui.theme.Ink
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -85,6 +86,8 @@ fun HomeScreen(
     onLoadMoreNode: (String) -> Unit,
     error: String?,
     onTopic: (Topic) -> Unit,
+    bookmarkIds: Set<Int>,
+    onToggleBookmark: (Topic) -> Unit,
     onAuthor: (String) -> Unit,
     onNode: (String) -> Unit,
     canCompose: Boolean,
@@ -92,6 +95,7 @@ fun HomeScreen(
     onRefresh: () -> Unit,
 ) {
     var hotExpanded by rememberSaveable { mutableStateOf(false) }
+    val swipeRows = rememberSwipeRowController()
     var categoryKey by rememberSaveable { mutableStateOf("tech") }
     var selectedNode by rememberSaveable { mutableStateOf(HomeCategories.first().nodes.first().name) }
     val category = HomeCategories.first { it.key == categoryKey }
@@ -164,12 +168,16 @@ fun HomeScreen(
                     )
                 }
                 if (hotExpanded) items(visibleHot, key = { "h${it.id}" }) { topic ->
-                    TopicRow(
+                    SwipeTopicRow(
                         topic = topic,
                         read = topic.id.toString() in readIds,
+                        bookmarked = topic.id in bookmarkIds,
+                        controller = swipeRows,
+                        onToggleBookmark = { onToggleBookmark(topic) },
                         onAuthor = { onAuthor(topic.member.username) },
                         onNode = onNode,
-                    ) { onTopic(topic) }
+                        onClick = { onTopic(topic) },
+                    )
                 }
             }
 
@@ -212,12 +220,16 @@ fun HomeScreen(
 
             if (visibleLatest.isNotEmpty()) {
                 items(visibleLatest, key = { "n${it.id}" }) { topic ->
-                    TopicRow(
+                    SwipeTopicRow(
                         topic = topic,
                         read = topic.id.toString() in readIds,
+                        bookmarked = topic.id in bookmarkIds,
+                        controller = swipeRows,
+                        onToggleBookmark = { onToggleBookmark(topic) },
                         onAuthor = { onAuthor(topic.member.username) },
                         onNode = onNode,
-                    ) { onTopic(topic) }
+                        onClick = { onTopic(topic) },
+                    )
                 }
 
                 item(key = "footer") {

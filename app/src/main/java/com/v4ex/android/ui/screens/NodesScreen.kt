@@ -361,6 +361,8 @@ fun NodeTopicsScreen(
     node: String,
     topics: List<com.v4ex.android.data.Topic>,
     readIds: Set<String>,
+    bookmarkIds: Set<Int>,
+    onToggleBookmark: (com.v4ex.android.data.Topic) -> Unit,
     loading: Boolean,
     moreLoading: Boolean,
     canLoadMore: Boolean,
@@ -376,6 +378,7 @@ fun NodeTopicsScreen(
     updating: Boolean = false,
 ) {
     var pullRefreshing by remember(node) { mutableStateOf(false) }
+    val swipeRows = com.v4ex.android.ui.rememberSwipeRowController()
     LaunchedEffect(loading, updating) { if (!loading && !updating) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
     val listState = rememberLazyListState()
@@ -449,9 +452,15 @@ fun NodeTopicsScreen(
                 }
             }
             items(topics, key = { it.id }) { topic ->
-                com.v4ex.android.ui.TopicRow(
-                    topic, read = topic.id.toString() in readIds, showNode = false,
-                ) { onTopic(topic) }
+                com.v4ex.android.ui.SwipeTopicRow(
+                    topic = topic,
+                    read = topic.id.toString() in readIds,
+                    bookmarked = topic.id in bookmarkIds,
+                    controller = swipeRows,
+                    onToggleBookmark = { onToggleBookmark(topic) },
+                    showNode = false,
+                    onClick = { onTopic(topic) },
+                )
             }
             if (loading && !pullRefreshing) {
                 item {

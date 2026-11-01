@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,8 @@ fun TopicScreen(
     hasMoreReplies: Boolean,
     action: TopicAction?,
     onToggleThreaded: () -> Unit,
+    bookmarked: Boolean,
+    onToggleBookmark: () -> Unit,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onAuthor: (String) -> Unit,
@@ -88,7 +92,7 @@ fun TopicScreen(
     onSticky: (String) -> Unit,
     onBoost: () -> Unit,
     onDismissAction: () -> Unit,
-    onReply: () -> Unit,
+    onReply: (Reply?) -> Unit,
 ) {
     var pullRefreshing by remember { mutableStateOf(false) }
     LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
@@ -117,9 +121,9 @@ fun TopicScreen(
             }
             Spacer(Modifier.weight(1f))
             if (topic != null && canReply) {
-                TextButton(onClick = onReply) { Text("回复", color = Ink.Primary) }
+                TextButton(onClick = { onReply(null) }) { Text("回复", color = Ink.Primary) }
             }
-            if (canManage) {
+            if (topic != null) {
                 Box {
                     Box(
                         Modifier
@@ -134,49 +138,42 @@ fun TopicScreen(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                     ) {
-                        StickyMenuItem("置顶 15 分钟") {
+                        // 收藏只存本机（V2EX 没有收藏接口）
+                        StickyMenuItem(if (bookmarked) "取消收藏" else "收藏") {
                             menuOpen = false
-                            onSticky("15min")
+                            onToggleBookmark()
                         }
-                        StickyMenuItem("置顶 1 小时") {
+                        StickyMenuItem("分享") {
                             menuOpen = false
-                            onSticky("1hr")
+                            sharePayload = topicSharePayload(topic)
                         }
-                        StickyMenuItem("置顶 8 小时") {
+                        StickyMenuItem("打开原帖") {
                             menuOpen = false
-                            onSticky("8hr")
+                            uriHandler.openUri(topic.url)
                         }
-                        HorizontalDivider(color = Ink.Line, thickness = 1.dp)
-                        StickyMenuItem("放到首页") {
-                            menuOpen = false
-                            boostConfirm = true
+                        if (canManage) {
+                            HorizontalDivider(color = Ink.Line, thickness = 1.dp)
+                            StickyMenuItem("置顶 15 分钟") {
+                                menuOpen = false
+                                onSticky("15min")
+                            }
+                            StickyMenuItem("置顶 1 小时") {
+                                menuOpen = false
+                                onSticky("1hr")
+                            }
+                            StickyMenuItem("置顶 8 小时") {
+                                menuOpen = false
+                                onSticky("8hr")
+                            }
+                            HorizontalDivider(color = Ink.Line, thickness = 1.dp)
+                            StickyMenuItem("放到首页") {
+                                menuOpen = false
+                                boostConfirm = true
+                            }
                         }
                     }
                 }
             }
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .clickable { topic?.let { sharePayload = topicSharePayload(it) } },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Share,
-                    contentDescription = "分享",
-                    tint = Ink.Secondary,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-            Text(
-                "打开原帖",
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { topic?.let { uriHandler.openUri(it.url) } }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                fontSize = 13.sp,
-                color = Ink.Secondary,
-            )
         }
 
         // 置顶/上首页的结果就地显示在顶栏下方，不抢焦点、也不会自动消失；
@@ -264,6 +261,7 @@ fun TopicScreen(
                     topicAuthor = topic?.member?.username,
                     rows = rows,
                     onAuthor = onAuthor,
+                    onReplyTo = if (canReply) ({ reply -> onReply(reply) }) else null,
                     onShareReply = { reply ->
                         topic?.let { sharePayload = replySharePayload(it, reply) }
                     },

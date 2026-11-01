@@ -128,6 +128,8 @@ data class Notice(
     val avatar: String? = null,
     /** 通知指向的主题；解析不出来就是 null（点消息时降级到浏览器） */
     val topicId: Int? = null,
+    /** 是否已读。服务端只返回未读，已读状态由 [NoticeHistory] 在本机记住。 */
+    val read: Boolean = false,
 )
 
 /**

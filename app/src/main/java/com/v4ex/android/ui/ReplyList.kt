@@ -66,6 +66,7 @@ fun LazyListScope.replyItems(
     topicAuthor: String?,
     onAuthor: (String) -> Unit,
     onShareReply: ((Reply) -> Unit)? = null,
+    onReplyTo: ((Reply) -> Unit)? = null,
 ) {
     // 一组的行在列表里是连续的（根 + 它的全部后代），扫一遍就能得到每组后代总数。
     val groupSize = HashMap<Int, Int>(rows.size)
@@ -86,6 +87,7 @@ fun LazyListScope.replyItems(
             groupSize = groupSize[row.reply.id] ?: 0,
             onAuthor = onAuthor,
             onShareReply = onShareReply,
+            onReplyTo = onReplyTo,
         )
     }
 }
@@ -98,6 +100,7 @@ private fun ReplyItem(
     groupSize: Int,
     onAuthor: (String) -> Unit,
     onShareReply: ((Reply) -> Unit)?,
+    onReplyTo: ((Reply) -> Unit)?,
 ) {
     val reply = row.reply
     var showMenu by remember(reply.id) { mutableStateOf(false) }
@@ -155,6 +158,11 @@ private fun ReplyItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                 )
+                if (onReplyTo != null) {
+                    ReplyAction("回复", !dismissing) {
+                        dismissThen { onReplyTo(reply) }
+                    }
+                }
                 ReplyAction("复制", !dismissing) {
                     dismissThen {
                         clipboard.setText(AnnotatedString(reply.content))

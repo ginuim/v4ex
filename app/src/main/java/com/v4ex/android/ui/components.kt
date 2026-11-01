@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -182,6 +183,8 @@ fun NoticeRow(
     onAuthor: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
+    // 未读：正常色 + 名字旁红点；已读：整体降一档灰，和首页「已读标题变灰」保持一致。
+    val read = notice.read
     Row(
         Modifier
             .fillMaxWidth()
@@ -192,7 +195,9 @@ fun NoticeRow(
             url = notice.avatar,
             name = notice.member.ifBlank { "V" },
             size = 36.dp,
-            modifier = if (onAuthor != null) Modifier.clickable(onClick = onAuthor) else Modifier,
+            modifier = Modifier
+                .alpha(if (read) 0.55f else 1f)
+                .then(if (onAuthor != null) Modifier.clickable(onClick = onAuthor) else Modifier),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -204,15 +209,24 @@ fun NoticeRow(
                     ),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Ink.Primary,
+                    color = if (read) Ink.Tertiary else Ink.Primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (!read) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(Ink.Badge))
+                }
                 Spacer(Modifier.weight(1f))
                 Text(Time.ago(notice.created), fontSize = 12.sp, color = Ink.Tertiary)
             }
             Spacer(Modifier.height(3.dp))
-            Text(notice.text, fontSize = 13.5.sp, lineHeight = 19.sp, color = Ink.Secondary)
+            Text(
+                notice.text,
+                fontSize = 13.5.sp,
+                lineHeight = 19.sp,
+                color = if (read) Ink.Tertiary else Ink.Secondary,
+            )
             if (notice.payload.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
