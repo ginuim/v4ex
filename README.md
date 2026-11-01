@@ -59,6 +59,16 @@ v1 的 `topics/latest.json` 没有翻页（`p` 参数被忽略），所以**没�
 | 楼层分享 | 长按任意回复分享该楼：面板预览区显示该楼摘录，链接锚到 `#reply{floor}`，摘录同时写进分享正文（Markdown 清洗、压成一行、90 字截断）。帖子分享则带标题 + 正文摘录 |
 | 包可见性 | Android 11+ 必须在 manifest 声明 `<queries>` 才能查到别的 App；不写的话网格永远是空的 |
 
+## 左滑收藏与收藏列表
+
+<p>
+  <img src="docs/android-swipe.png" alt="首页帖子左滑露出收藏" width="240" />
+  <img src="docs/android-topic-menu.png" alt="帖子顶部菜单：收藏、分享、打开原帖" width="240" />
+  <img src="docs/android-bookmarks.png" alt="收藏的帖子列表" width="240" />
+</p>
+
+首页热门 / 最新和节点主题页的帖子行可以左滑露出「收藏」（已收藏显示「取消收藏」）；帖子页右上角 ⋯ 菜单里也有收藏、分享和打开原帖。收藏只存在本机，V2EX 没有收藏接口，列表在「我的 → 收藏的帖子」。
+
 ## 按对话看回复
 
 <img src="docs/android-thread.png" alt="对话视图与回复关系" width="320" />
@@ -86,16 +96,20 @@ openTopic    -> openTopic = null          // 帖子 → 回到它来自的节点
 openNode     -> openNode = null
 ```
 
+## 隐私与数据
+
+V4EX 没有自建服务器，开发者不接收你的 PAT。令牌用于直接向 V2EX 验证身份；收藏、历史和偏好保存在设备上，可能随 Android 备份或迁移。应用「我的」及令牌输入弹窗均可离线查看[隐私政策](PRIVACY.md)。
+
 ## 登录
 
-<img src="docs/android-me.png" alt="我的：账户信息与浏览历史" width="320" />
+<img src="docs/android-me.png" alt="我的：账户信息、收藏与浏览历史" width="320" />
 
 V2EX 没有 OAuth，只有 Personal Access Token：
 
 1. 网页版 <https://www.v2ex.com/settings/token> 创建令牌（最长 360 天）
 2. App 里「我的 → 填写令牌」粘贴
 
-令牌用 DataStore 存在本机，不上传任何地方。**不填也能用**（首页/节点/帖子全部是 v1 免令牌接口）。
+令牌保存在设备的 DataStore 中，使用需要身份验证的功能时会通过 HTTPS 发送给 V2EX；V4EX 没有自己的服务器，不会将令牌发送给开发者。应用允许 Android 备份，数据可能随设备备份或迁移。详见[隐私政策](PRIVACY.md)。**不填也能用**（首页/节点/帖子全部是 v1 免令牌接口）。
 
 「我的」页显示会员等级、令牌剩余有效期与权限范围、注册时间，以及更换 / 清空令牌、收藏的帖子和浏览历史入口。
 

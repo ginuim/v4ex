@@ -164,6 +164,9 @@ fun MeScreen(
 
         Spacer(Modifier.height(26.dp))
         SectionLabel("操作")
+        com.v4ex.android.ui.PrivacyEntry { onClick ->
+            ActionRow("隐私政策与数据说明", onClick)
+        }
         ActionRow(if (hasToken) "更换令牌" else "填写令牌", onAuth)
         if (canCreateToken) {
             ActionRow("创建新令牌", onClick = {
@@ -180,7 +183,7 @@ fun MeScreen(
 
         Spacer(Modifier.height(26.dp))
         Text(
-            "V4EX ${com.v4ex.android.BuildConfig.VERSION_NAME}\n依照 V2EX 开放能力，普通用户可浏览阅读，PRO 用户还可发布内容。\n内容来自 V2EX，与官方无关",
+            "V4EX ${com.v4ex.android.BuildConfig.VERSION_NAME}\n依照 V2EX 开放能力，普通用户可浏览阅读，PRO 用户还可发布内容。\n内容来自 V2EX · V4EX 是独立第三方客户端",
             modifier = Modifier.padding(horizontal = 22.dp),
             fontSize = 12.sp,
             lineHeight = 18.sp,

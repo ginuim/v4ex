@@ -415,11 +415,12 @@ private fun TokenDialog(initial: String, onDismiss: () -> Unit, onSave: (String)
         text = {
             Column(Modifier.widthIn(min = 260.dp)) {
                 Text(
-                    "在 v2ex.com/settings/token 创建一个令牌，粘贴到下面。只保存在本机。",
+                    "在 v2ex.com/settings/token 创建令牌后粘贴到下面。V4EX 没有自建服务器，PAT 保存在设备上，仅用于向 V2EX 验证身份。",
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                     color = Ink.Secondary,
                 )
+                com.v4ex.android.ui.PrivacyEntry()
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
