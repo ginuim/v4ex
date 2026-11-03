@@ -35,6 +35,7 @@ fun MarkdownContent(
     renderer: MarkdownRenderer = MarkdownRenderer.Modern,
 ) {
     var preview by remember(text) { mutableStateOf<String?>(null) }
+    // 行内小图（表情）还是交给 Coil 的 transformer；独占一段的大图由自定义 paragraph 组件接管。
     val images = remember(text) {
         object : ImageTransformer by Coil2ImageTransformerImpl {
             @Composable
@@ -44,6 +45,8 @@ fun MarkdownContent(
             }
         }
     }
+    // 和 preview 用同一个 key：换了正文就换新的 state，避免点到上一份正文的 state 上。
+    val components = remember(text) { articleMarkdownComponents { url -> preview = url } }
     preview?.let { ImagePreview(it) { preview = null } }
     when (renderer) {
         MarkdownRenderer.Legacy -> RichContent(text, modifier, paragraphSpacing = 18.dp)
@@ -53,6 +56,7 @@ fun MarkdownContent(
                 content = remember(text) { normalizeMarkdownLineEndings(text) },
                 modifier = modifier.fillMaxWidth(),
                 imageTransformer = images,
+                components = components,
                 colors = markdownColor(
                     text = Ink.Primary, linkText = Ink.Blue,
                     codeBackground = Ink.ChipBg, dividerColor = Ink.Line,

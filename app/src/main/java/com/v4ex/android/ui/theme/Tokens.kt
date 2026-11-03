@@ -12,6 +12,8 @@ data class ColorTokens(
     val Blue: Color, val Purple: Color,
     val FilterSelected: Color, val OnFilterSelected: Color,
     val ArtStroke: Color, val ArtFill: Color, val ArtHair: Color,
+    /** 代码高亮：关键字、字符串、数字；注释和函数调用复用 Secondary / Blue。 */
+    val CodeKeyword: Color, val CodeString: Color, val CodeNumber: Color,
     val Scrim: Color = Color.Black.copy(alpha = 0.32f),
 )
 
@@ -22,6 +24,7 @@ val LightTokens = ColorTokens(
     Blue = Color(0xFF3F6BE0), Purple = Color(0xFF8B5CF6),
     FilterSelected = Color(0xFF111114), OnFilterSelected = Color.White,
     ArtStroke = Color(0xFF9A9A9F), ArtFill = Color(0xFFF0EFEC), ArtHair = Color(0xFFD8D7D3),
+    CodeKeyword = Color(0xFF6C4BD6), CodeString = Color(0xFF2C7A5B), CodeNumber = Color(0xFFB4602A),
 )
 
 val DarkTokens = ColorTokens(
@@ -31,5 +34,6 @@ val DarkTokens = ColorTokens(
     Blue = Color(0xFF93B1FF), Purple = Color(0xFFBAA1FF),
     FilterSelected = Color(0xFF484850), OnFilterSelected = Color(0xFFF2F2F0),
     ArtStroke = Color(0xFF96969F), ArtFill = Color(0xFF2B2B30), ArtHair = Color(0xFF505058),
+    CodeKeyword = Color(0xFFC0AEFF), CodeString = Color(0xFF8FD3AF), CodeNumber = Color(0xFFF0B77E),
     Scrim = Color.Black.copy(alpha = 0.56f),
 )

@@ -47,6 +47,9 @@ object Ink {
     val ArtStroke: Color @Composable get() = LocalPalette.current.ArtStroke
     val ArtFill: Color @Composable get() = LocalPalette.current.ArtFill
     val ArtHair: Color @Composable get() = LocalPalette.current.ArtHair
+    val CodeKeyword: Color @Composable get() = LocalPalette.current.CodeKeyword
+    val CodeString: Color @Composable get() = LocalPalette.current.CodeString
+    val CodeNumber: Color @Composable get() = LocalPalette.current.CodeNumber
     val Scrim: Color @Composable get() = LocalPalette.current.Scrim
 }
 
