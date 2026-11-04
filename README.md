@@ -100,6 +100,8 @@ openNode     -> openNode = null
 
 V4EX 没有自建服务器，开发者不接收你的 PAT。令牌用于直接向 V2EX 验证身份；收藏、历史和偏好保存在设备上，可能随 Android 备份或迁移。应用「我的」及令牌输入弹窗均可离线查看[隐私政策](PRIVACY.md)。
 
+保存到相册只写入本机 `Pictures/V4EX` 目录，不会上传，也不会读取相册中的其他内容；Android 10 及以上无需额外授权。
+
 ## 登录
 
 <img src="docs/android-me.png" alt="我的：账户信息、收藏与浏览历史" width="320" />

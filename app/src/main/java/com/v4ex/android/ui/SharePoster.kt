@@ -1,8 +1,5 @@
 package com.v4ex.android.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import kotlinx.coroutines.launch
 import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
@@ -22,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
@@ -138,29 +136,14 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
     var uri by remember(payload) { mutableStateOf<android.net.Uri?>(null) }
     var failed by remember(payload) { mutableStateOf(false) }
     var generating by remember(payload) { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
-    val saveImage = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { target ->
-        val image = bitmap
-        if (target != null && image != null) {
-            scope.launch {
-                saving = true
-                try {
-                    withContext(Dispatchers.IO) {
-                        checkNotNull(context.contentResolver.openOutputStream(target)).use {
-                            check(image.compress(Bitmap.CompressFormat.PNG, 100, it))
-                        }
-                    }
-                    Toast.makeText(context, "海报已保存", Toast.LENGTH_SHORT).show()
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    Toast.makeText(context, "保存失败，请重试", Toast.LENGTH_SHORT).show()
-                } finally {
-                    saving = false
-                }
-            }
-        }
+    val saveToGallery = rememberGallerySaveAction { result ->
+        saving = false
+        Toast.makeText(context, when (result) {
+            GallerySaveResult.Saved -> "海报已保存到相册"
+            GallerySaveResult.Failed -> "保存失败，请重试"
+            GallerySaveResult.PermissionDenied -> "需要存储权限才能保存到相册"
+        }, Toast.LENGTH_SHORT).show()
     }
     LaunchedEffect(payload, posterDark) {
         generating = true
@@ -215,11 +198,14 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
                 } else {
                     CircularProgressIndicator(Modifier.padding(24.dp))
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
                     TextButton(onClick = onDismiss) { Text("关闭") }
                     TextButton(enabled = bitmap != null && !saving && !generating, onClick = {
-                        saveImage.launch("V4EX-海报-${System.currentTimeMillis()}.png")
-                    }) { Text(if (saving) "保存中…" else "下载图片") }
+                        val image = bitmap ?: return@TextButton
+                        saving = true
+                        // 海报已经是 Bitmap，直接落盘，不用再走 Coil。
+                        saveToGallery("V4EX-海报-${System.currentTimeMillis()}.png") { image }
+                    }) { Text(if (saving) "保存中…" else "保存到相册") }
                     TextButton(enabled = uri != null && !generating, onClick = {
                         try {
                             val send = Intent(Intent.ACTION_SEND).apply {

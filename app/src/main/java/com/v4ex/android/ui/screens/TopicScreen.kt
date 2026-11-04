@@ -1,5 +1,9 @@
 package com.v4ex.android.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -97,6 +102,7 @@ fun TopicScreen(
     var pullRefreshing by remember { mutableStateOf(false) }
     LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     // 分享面板的内容：帖子本身，或长按楼层时的「带 #replyN 锚点」的楼层摘录。
     var sharePayload by remember { mutableStateOf<SharePayload?>(null) }
     // 管理菜单只对已确认具备资格的主题作者出现。
@@ -146,6 +152,13 @@ fun TopicScreen(
                         StickyMenuItem("分享") {
                             menuOpen = false
                             sharePayload = topicSharePayload(topic)
+                        }
+                        StickyMenuItem("复制链接") {
+                            menuOpen = false
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText(topic.title, topic.url))
+                            Toast.makeText(context, "已复制链接", Toast.LENGTH_SHORT).show()
                         }
                         StickyMenuItem("打开原帖") {
                             menuOpen = false
