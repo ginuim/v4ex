@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +112,9 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
     }
     var authDialog by remember { mutableStateOf(false) }
     val homeList = rememberLazyListState()
+    // 屏幕是 when{} 平铺的：离开 composition 时 rememberSaveable 会被丢弃。
+    // 用 SaveableStateHolder 按屏幕 key 存/取，返回时才能恢复（热门区展开、选中节点、分组展开等）。
+    val saveableStateHolder = rememberSaveableStateHolder()
     val readIds by vm.readIds.collectAsStateWithLifecycle()
     val homeState by vm.home.collectAsStateWithLifecycle()
     val nodeState by vm.nodeTopics.collectAsStateWithLifecycle()
@@ -156,194 +160,212 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             when {
                 // 个人页叠在帖子页之上。先判 openMember，否则从帖子里点作者永远进不去。
-                openMember != null -> MemberScreen(
-                    loading = member.loading,
-                    profile = member.profile,
-                    error = member.error,
-                    username = openMember ?: member.username,
-                    onBack = { openMember = null },
-                    onRetry = { openMember?.let { vm.loadMember(it) } },
-                    onOpenTopic = {
-                        openTopic = it.id
-                        openMember = null
-                    },
-                )
+                openMember != null -> saveableStateHolder.SaveableStateProvider("member:${openMember}") {
+                    MemberScreen(
+                        loading = member.loading,
+                        profile = member.profile,
+                        error = member.error,
+                        username = openMember ?: member.username,
+                        onBack = { openMember = null },
+                        onRetry = { openMember?.let { vm.loadMember(it) } },
+                        onOpenTopic = {
+                            openTopic = it.id
+                            openMember = null
+                        },
+                    )
+                }
 
-                openTopic != null -> TopicScreen(
-                    loading = topic.loading,
-                    topic = topic.topic,
-                    replies = topic.replies,
-                    error = topic.error,
-                    threaded = threaded,
-                    canReply = permissions.canPublish,
-                    canManage = permissions.canManage(topic.topic),
-                    repliesPaged = topic.repliesPaged,
-                    moreRepliesLoading = topic.moreRepliesLoading,
-                    hasMoreReplies = topic.hasMoreReplies,
-                    action = topic.action,
-                    onToggleThreaded = { vm.setThreaded(!threaded) },
-                    onBack = { openTopic = null },
-                    onRetry = { openTopic?.let { vm.loadTopic(it) } },
-                    bookmarked = topic.topic?.let { t -> bookmarks.any { it.id == t.id } } ?: false,
-                    onToggleBookmark = vm::toggleBookmark,
-                    onAuthor = { openMember = it },
-                    onNode = {
-                        openNode = it
-                        openTopic = null
-                    },
-                    onLoadMoreReplies = vm::loadMoreReplies,
-                    onSticky = vm::setSticky,
-                    onBoost = vm::boostTopic,
-                    onDismissAction = vm::dismissTopicAction,
-                    onReply = { reply ->
-                        if (permissions.canPublish) {
-                            vm.resetPublish()
-                            replyPrefix = reply?.let { "@${it.member.username} #${it.floor} " }.orEmpty()
-                            replyTo = topic.topic?.id
-                            composeOpen = replyTo != null
-                        }
-                    },
-                )
+                openTopic != null -> saveableStateHolder.SaveableStateProvider("topic:${openTopic}") {
+                    TopicScreen(
+                        loading = topic.loading,
+                        topic = topic.topic,
+                        replies = topic.replies,
+                        error = topic.error,
+                        threaded = threaded,
+                        canReply = permissions.canPublish,
+                        canManage = permissions.canManage(topic.topic),
+                        repliesPaged = topic.repliesPaged,
+                        moreRepliesLoading = topic.moreRepliesLoading,
+                        hasMoreReplies = topic.hasMoreReplies,
+                        action = topic.action,
+                        onToggleThreaded = { vm.setThreaded(!threaded) },
+                        onBack = { openTopic = null },
+                        onRetry = { openTopic?.let { vm.loadTopic(it) } },
+                        bookmarked = topic.topic?.let { t -> bookmarks.any { it.id == t.id } } ?: false,
+                        onToggleBookmark = vm::toggleBookmark,
+                        onAuthor = { openMember = it },
+                        onNode = {
+                            openNode = it
+                            openTopic = null
+                        },
+                        onLoadMoreReplies = vm::loadMoreReplies,
+                        onSticky = vm::setSticky,
+                        onBoost = vm::boostTopic,
+                        onDismissAction = vm::dismissTopicAction,
+                        onReply = { reply ->
+                            if (permissions.canPublish) {
+                                vm.resetPublish()
+                                replyPrefix = reply?.let { "@${it.member.username} #${it.floor} " }.orEmpty()
+                                replyTo = topic.topic?.id
+                                composeOpen = replyTo != null
+                            }
+                        },
+                    )
+                }
 
-                openNode != null -> NodeTopicsScreen(
-                    node = openNode.orEmpty(),
-                    nodeTitle = nodes.nodes.firstOrNull { it.name == openNode }?.title
-                        ?: favNodes.firstOrNull { it.first == openNode }?.second.orEmpty(),
-                    topics = nodeState.topics,
-                    readIds = readIds,
-                    bookmarkIds = bookmarkIds,
-                    onToggleBookmark = vm::toggleBookmarkTopic,
-                    loading = nodeState.loading,
-                    updating = nodeState.updating,
-                    moreLoading = nodeState.moreLoading,
-                    canLoadMore = nodeState.canLoadMore,
-                    hint = nodeState.hint,
-                    error = nodeState.error,
-                    onBack = { openNode = null },
-                    onTopic = { openTopic = it.id },
-                    onRetry = { openNode?.let { vm.loadNodeTopics(it) } },
-                    onLoadMore = vm::loadMoreNodeTopics,
-                    detail = nodeState.detail,
-                )
+                openNode != null -> saveableStateHolder.SaveableStateProvider("node:${openNode}") {
+                    NodeTopicsScreen(
+                        node = openNode.orEmpty(),
+                        nodeTitle = nodes.nodes.firstOrNull { it.name == openNode }?.title
+                            ?: favNodes.firstOrNull { it.first == openNode }?.second.orEmpty(),
+                        topics = nodeState.topics,
+                        readIds = readIds,
+                        bookmarkIds = bookmarkIds,
+                        onToggleBookmark = vm::toggleBookmarkTopic,
+                        loading = nodeState.loading,
+                        updating = nodeState.updating,
+                        moreLoading = nodeState.moreLoading,
+                        canLoadMore = nodeState.canLoadMore,
+                        hint = nodeState.hint,
+                        error = nodeState.error,
+                        onBack = { openNode = null },
+                        onTopic = { openTopic = it.id },
+                        onRetry = { openNode?.let { vm.loadNodeTopics(it) } },
+                        onLoadMore = vm::loadMoreNodeTopics,
+                        detail = nodeState.detail,
+                    )
+                }
 
                 // 浏览历史压在帖子/节点页下面：从历史点进帖子时它不关闭，
                 // 帖子返回后回到历史列表，而不是直接掉回「我的」。
-                openHistory -> HistoryScreen(
-                    items = history,
-                    loaded = historyLoaded,
-                    onBack = { openHistory = false },
-                    onOpen = { entry -> openTopic = entry.id },
-                    onRemove = vm::removeHistory,
-                    onClearAll = vm::clearHistory,
-                )
+                openHistory -> saveableStateHolder.SaveableStateProvider("history") {
+                    HistoryScreen(
+                        items = history,
+                        loaded = historyLoaded,
+                        onBack = { openHistory = false },
+                        onOpen = { entry -> openTopic = entry.id },
+                        onRemove = vm::removeHistory,
+                        onClearAll = vm::clearHistory,
+                    )
+                }
 
-                openBookmarks -> BookmarksScreen(
-                    items = bookmarks,
-                    loaded = bookmarksLoaded,
-                    onBack = { openBookmarks = false },
-                    onOpen = { entry -> openTopic = entry.id },
-                    onRemove = vm::removeBookmark,
-                )
+                openBookmarks -> saveableStateHolder.SaveableStateProvider("bookmarks") {
+                    BookmarksScreen(
+                        items = bookmarks,
+                        loaded = bookmarksLoaded,
+                        onBack = { openBookmarks = false },
+                        onOpen = { entry -> openTopic = entry.id },
+                        onRemove = vm::removeBookmark,
+                    )
+                }
 
-                tab == 0 -> HomeScreen(
-                    listState = homeList,
-                    hot = home.hot,
-                    latest = home.latest,
-                    readIds = readIds,
-                    unreadOnly = unreadOnly,
-                    onUnreadOnly = vm::setUnreadOnly,
-                    nodeCount = nodes.nodes.size,
-                    me = me.me,
-                    rememberedUser = rememberedUser,
-                    refreshing = home.refreshing,
-                    updating = home.updating,
-                    cachedAt = home.cachedAt,
-                    nodeState = homeNode,
-                    onSelectNode = { vm.loadHomeNode(it) },
-                    onLoadMoreNode = { vm.loadHomeNode(it, more = true) },
-                    error = home.error,
-                    onTopic = { openTopic = it.id },
-                    bookmarkIds = bookmarkIds,
-                    onToggleBookmark = vm::toggleBookmarkTopic,
-                    onNode = { openNode = it },
-                    onRefresh = {
-                        vm.refreshHome()
-                        vm.loadMe()
-                    },
-                    canCompose = permissions.canPublish,
-                    onCompose = {
-                        if (permissions.canPublish) {
-                            vm.resetPublish()
-                            replyTo = null
-                            composeOpen = true
-                        }
-                    },
-                    onAuthor = { openMember = it },
-                )
-
-                tab == 1 -> NodesScreen(
-                    nodes = nodes.nodes,
-                    query = nodes.query,
-                    loading = nodes.loading,
-                    favNodes = favNodes,
-                    onQuery = vm::setNodeQuery,
-                    onNode = { openNode = it.name },
-                    onNodeByName = { openNode = it },
-                    onToggleFav = vm::toggleFavNode,
-                )
-
-                tab == 2 -> NoticesScreen(
-                    hasToken = hasToken,
-                    items = notices.items,
-                    loading = notices.loading,
-                    error = notices.error,
-                    moreLoading = notices.moreLoading,
-                    canLoadMore = notices.canLoadMore,
-                    onRefresh = vm::loadNotices,
-                    onLoadMore = vm::loadMoreNotices,
-                    onAuth = { authDialog = true },
-                    onAuthor = { if (it.isNotBlank()) openMember = it },
-                    onClearAll = vm::clearAllNotices,
-                    onOpenTopic = { notice ->
-                        // 点开即已读：先摘角标，再同步服务端。
-                        vm.clearNotice(notice.id)
-                        // 通知里没解析出主题 id 时（比如只是 @ 提到），退到浏览器看收件箱。
-                        val id = notice.topicId
-                        if (id != null) {
-                            openTopic = id
-                        } else {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://www.v2ex.com/notifications"))
-                                )
+                tab == 0 -> saveableStateHolder.SaveableStateProvider("home") {
+                    HomeScreen(
+                        listState = homeList,
+                        hot = home.hot,
+                        latest = home.latest,
+                        readIds = readIds,
+                        unreadOnly = unreadOnly,
+                        onUnreadOnly = vm::setUnreadOnly,
+                        nodeCount = nodes.nodes.size,
+                        me = me.me,
+                        rememberedUser = rememberedUser,
+                        refreshing = home.refreshing,
+                        updating = home.updating,
+                        cachedAt = home.cachedAt,
+                        nodeState = homeNode,
+                        onSelectNode = { vm.loadHomeNode(it) },
+                        onLoadMoreNode = { vm.loadHomeNode(it, more = true) },
+                        error = home.error,
+                        onTopic = { openTopic = it.id },
+                        bookmarkIds = bookmarkIds,
+                        onToggleBookmark = vm::toggleBookmarkTopic,
+                        onNode = { openNode = it },
+                        onRefresh = {
+                            vm.refreshHome()
+                            vm.loadMe()
+                        },
+                        canCompose = permissions.canPublish,
+                        onCompose = {
+                            if (permissions.canPublish) {
+                                vm.resetPublish()
+                                replyTo = null
+                                composeOpen = true
                             }
-                        }
-                    },
-                )
+                        },
+                        onAuthor = { openMember = it },
+                    )
+                }
 
-                else -> MeScreen(
-                    hasToken = hasToken,
-                    me = me.me,
-                    error = me.error,
-                    historyCount = history.size,
-                    bookmarkCount = bookmarks.size,
-                    tokenInfo = me.tokenInfo,
-                    rateLimit = rateLimit,
-                    creatingToken = me.creatingToken,
-                    canCreateToken = permissions.canCreateToken,
-                    createdToken = me.createdToken,
-                    createError = me.createError,
-                    onOpenHistory = { openHistory = true },
-                    onOpenBookmarks = { openBookmarks = true },
-                    onAuth = { authDialog = true },
-                    onSignOut = { vm.saveToken("") },
-                    onCreateToken = { scope, seconds -> vm.createToken(scope, seconds) },
-                    onDismissCreate = vm::dismissCreatedToken,
-                    themeMode = vm.themeMode.collectAsStateWithLifecycle().value,
-                    onThemeMode = vm::setThemeMode,
-                    checkingUpdate = updateState.checking,
-                    onCheckUpdate = { updater.check(manual = true) },
-                )
+                tab == 1 -> saveableStateHolder.SaveableStateProvider("nodes") {
+                    NodesScreen(
+                        nodes = nodes.nodes,
+                        query = nodes.query,
+                        loading = nodes.loading,
+                        favNodes = favNodes,
+                        onQuery = vm::setNodeQuery,
+                        onNode = { openNode = it.name },
+                        onNodeByName = { openNode = it },
+                        onToggleFav = vm::toggleFavNode,
+                    )
+                }
+
+                tab == 2 -> saveableStateHolder.SaveableStateProvider("notices") {
+                    NoticesScreen(
+                        hasToken = hasToken,
+                        items = notices.items,
+                        loading = notices.loading,
+                        error = notices.error,
+                        moreLoading = notices.moreLoading,
+                        canLoadMore = notices.canLoadMore,
+                        onRefresh = vm::loadNotices,
+                        onLoadMore = vm::loadMoreNotices,
+                        onAuth = { authDialog = true },
+                        onAuthor = { if (it.isNotBlank()) openMember = it },
+                        onClearAll = vm::clearAllNotices,
+                        onOpenTopic = { notice ->
+                            // 点开即已读：先摘角标，再同步服务端。
+                            vm.clearNotice(notice.id)
+                            // 通知里没解析出主题 id 时（比如只是 @ 提到），退到浏览器看收件箱。
+                            val id = notice.topicId
+                            if (id != null) {
+                                openTopic = id
+                            } else {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.v2ex.com/notifications"))
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+
+                else -> saveableStateHolder.SaveableStateProvider("me") {
+                    MeScreen(
+                        hasToken = hasToken,
+                        me = me.me,
+                        error = me.error,
+                        historyCount = history.size,
+                        bookmarkCount = bookmarks.size,
+                        tokenInfo = me.tokenInfo,
+                        rateLimit = rateLimit,
+                        creatingToken = me.creatingToken,
+                        canCreateToken = permissions.canCreateToken,
+                        createdToken = me.createdToken,
+                        createError = me.createError,
+                        onOpenHistory = { openHistory = true },
+                        onOpenBookmarks = { openBookmarks = true },
+                        onAuth = { authDialog = true },
+                        onSignOut = { vm.saveToken("") },
+                        onCreateToken = { scope, seconds -> vm.createToken(scope, seconds) },
+                        onDismissCreate = vm::dismissCreatedToken,
+                        themeMode = vm.themeMode.collectAsStateWithLifecycle().value,
+                        onThemeMode = vm::setThemeMode,
+                        checkingUpdate = updateState.checking,
+                        onCheckUpdate = { updater.check(manual = true) },
+                    )
+                }
             }
         }
 
