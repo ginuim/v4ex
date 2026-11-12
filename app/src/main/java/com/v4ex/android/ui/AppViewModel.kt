@@ -542,10 +542,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 打开帖子。有令牌时优先走 v2（正文 + 首页 20 条回复），v2 挂了退回 v1，
      * 保证「帖子总能打开」——哪怕令牌过期、v2 接口抽风。
      */
+    private var topicJob: kotlinx.coroutines.Job? = null
+    private var moreRepliesJob: kotlinx.coroutines.Job? = null
+
     fun loadTopic(id: Int) {
+        topicJob?.cancel()
+        moreRepliesJob?.cancel()
         markRead(id)
         _topic.value = if (_topic.value.topic?.id == id) _topic.value.copy(loading = true, error = null) else TopicUi(loading = true)
-        viewModelScope.launch {
+        topicJob = viewModelScope.launch {
             try {
                 val hasToken = tokenValue.isNotBlank()
                 // 先出标题和正文（一般 1~2s），回复到了再补上，避免整页干等
@@ -578,6 +583,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val replies = withContext(Dispatchers.IO) { api.replies(id) }
                     _topic.value = TopicUi(loading = false, topic = topic, replies = replies)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _topic.value = TopicUi(loading = false, error = friendly(e))
             }
@@ -590,7 +597,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val topic = current.topic ?: return
         if (current.moreRepliesLoading || !current.hasMoreReplies) return
         _topic.value = current.copy(moreRepliesLoading = true)
-        viewModelScope.launch {
+        moreRepliesJob = viewModelScope.launch {
             try {
                 val next = current.repliesPage + 1
                 val (items, page) = withContext(Dispatchers.IO) { api.repliesPage(topic.id, next) }
@@ -601,6 +608,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     moreRepliesLoading = false,
                     hasMoreReplies = page.hasMore(next),
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _topic.value = current.copy(
                     moreRepliesLoading = false,

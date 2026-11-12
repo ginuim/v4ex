@@ -92,6 +92,11 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var openTopic by rememberSaveable { mutableStateOf<Int?>(null) }
+    var topicBackStack by rememberSaveable { mutableStateOf(intArrayOf()) }
+    val closeTopic = {
+        openTopic = topicBackStack.lastOrNull()
+        topicBackStack = topicBackStack.dropLast(1).toIntArray()
+    }
     var openNode by rememberSaveable { mutableStateOf<String?>(null) }
     var openMember by rememberSaveable { mutableStateOf<String?>(null) }
     var openHistory by rememberSaveable { mutableStateOf(false) }
@@ -149,7 +154,7 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
         // 所以帖子返回要回到历史，而不是直接掉回「我的」。收藏页同理。
         when {
             openMember != null -> openMember = null
-            openTopic != null -> openTopic = null
+            openTopic != null -> closeTopic()
             openNode != null -> openNode = null
             openHistory -> openHistory = false
             openBookmarks -> openBookmarks = false
@@ -189,13 +194,20 @@ private fun V4exApp(vm: AppViewModel = viewModel()) {
                         hasMoreReplies = topic.hasMoreReplies,
                         action = topic.action,
                         onToggleThreaded = { vm.setThreaded(!threaded) },
-                        onBack = { openTopic = null },
+                        onBack = closeTopic,
+                        onTopicLink = { id ->
+                            openTopic?.takeIf { it != id }?.let { current ->
+                                topicBackStack += current
+                                openTopic = id
+                            }
+                        },
                         onRetry = { openTopic?.let { vm.loadTopic(it) } },
                         bookmarked = topic.topic?.let { t -> bookmarks.any { it.id == t.id } } ?: false,
                         onToggleBookmark = vm::toggleBookmark,
                         onAuthor = { openMember = it },
                         onNode = {
                             openNode = it
+                            topicBackStack = intArrayOf()
                             openTopic = null
                         },
                         onLoadMoreReplies = vm::loadMoreReplies,

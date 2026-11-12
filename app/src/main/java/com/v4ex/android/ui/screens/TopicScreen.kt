@@ -45,6 +45,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -93,6 +96,7 @@ fun TopicScreen(
     onRetry: () -> Unit,
     onAuthor: (String) -> Unit,
     onNode: (String) -> Unit,
+    onTopicLink: (Int) -> Unit,
     onLoadMoreReplies: () -> Unit,
     onSticky: (String) -> Unit,
     onBoost: () -> Unit,
@@ -103,6 +107,22 @@ fun TopicScreen(
     LaunchedEffect(loading) { if (!loading) pullRefreshing = false }
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+    val contentUriHandler = object : UriHandler {
+        override fun openUri(uri: String) {
+            val destination = Uri.parse(uri)
+            val id = if (
+                destination.scheme.equals("https", ignoreCase = true) ||
+                destination.scheme.equals("http", ignoreCase = true)
+            ) {
+                destination.host?.lowercase()?.takeIf { it == "v2ex.com" || it == "www.v2ex.com" }
+                    ?.let { V2EX_TOPIC_PATH.matchEntire(destination.path.orEmpty()) }
+                    ?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+            } else {
+                null
+            }
+            if (id != null) onTopicLink(id) else uriHandler.openUri(uri)
+        }
+    }
     // 分享面板的内容：帖子本身，或长按楼层时的「带 #replyN 锚点」的楼层摘录。
     var sharePayload by remember { mutableStateOf<SharePayload?>(null) }
     // 管理菜单只对已确认具备资格的主题作者出现。
@@ -204,112 +224,114 @@ fun TopicScreen(
                 hint = "可能被删了，也可能作者改主意了。\n返回上一页，换个帖子看看。",
                 art = EmptyArt.Topic,
             )
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                item {
-                    Column(Modifier.padding(horizontal = 22.dp)) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            topic.title,
-                            fontSize = 21.sp,
-                            lineHeight = 30.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Ink.Primary,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically) {
-                                Avatar(
-                                    url = topic.member.avatar,
-                                    name = topic.member.username,
-                                    size = 22.dp,
-                                    modifier = Modifier.clickable { onAuthor(topic.member.username) },
-                                )
-                                Spacer(Modifier.width(7.dp))
-                                Text(topic.member.username, fontSize = 12.5.sp, color = Ink.Secondary)
-                            }
-                            if (topic.node.name.isNotBlank()) {
-                                Text(
-                                    topic.node.name,
-                                    Modifier.align(Alignment.CenterVertically).widthIn(max = 140.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(Ink.ChipBg)
-                                        .clickable { onNode(topic.node.name) }
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                )
-                            }
+            else -> CompositionLocalProvider(LocalUriHandler provides contentUriHandler) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    item {
+                        Column(Modifier.padding(horizontal = 22.dp)) {
+                            Spacer(Modifier.height(6.dp))
                             Text(
-                                buildString {
-                                    append("${Time.ago(topic.created)} · ${topic.replies} 回复")
-                                    topic.stars?.let { append(" · $it 收藏") }
-                                    topic.thanks?.let { append(" · $it 感谢") }
-                                },
-                                Modifier.align(Alignment.CenterVertically), fontSize = 12.5.sp, color = Ink.Secondary,
+                                topic.title,
+                                fontSize = 21.sp,
+                                lineHeight = 30.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Ink.Primary,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically) {
+                                    Avatar(
+                                        url = topic.member.avatar,
+                                        name = topic.member.username,
+                                        size = 22.dp,
+                                        modifier = Modifier.clickable { onAuthor(topic.member.username) },
+                                    )
+                                    Spacer(Modifier.width(7.dp))
+                                    Text(topic.member.username, fontSize = 12.5.sp, color = Ink.Secondary)
+                                }
+                                if (topic.node.name.isNotBlank()) {
+                                    Text(
+                                        topic.node.name,
+                                        Modifier.align(Alignment.CenterVertically).widthIn(max = 140.dp)
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Ink.ChipBg)
+                                            .clickable { onNode(topic.node.name) }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 11.5.sp, lineHeight = 15.sp, color = Ink.Secondary,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Text(
+                                    buildString {
+                                        append("${Time.ago(topic.created)} · ${topic.replies} 回复")
+                                        topic.stars?.let { append(" · $it 收藏") }
+                                        topic.thanks?.let { append(" · $it 感谢") }
+                                    },
+                                    Modifier.align(Alignment.CenterVertically), fontSize = 12.5.sp, color = Ink.Secondary,
+                                )
+                            }
+                            if (topic.content.isNotBlank()) {
+                                Spacer(Modifier.height(16.dp))
+                                TopicBody(text = topic.content)
+                            }
+                            Spacer(Modifier.height(24.dp))
+                        }
+                        // 一条回复都没有时，楼层/对话切换没有意义，连「回复 0」一起不显示。
+                        if (replies.isNotEmpty()) {
+                            ReplyHeader(
+                                // V2 分页时只拿到了前 20 条，条数应以服务端总数为准；
+                                // 刚发出去的回复可能让本地比服务端还多，取大值避免数字倒退。
+                                count = if (repliesPaged) maxOf(topic.replies, replies.size) else replies.size,
+                                conversationCount = if (threaded) conversationCount else 0,
+                                threaded = threaded,
+                                onToggle = onToggleThreaded,
                             )
                         }
-                        if (topic.content.isNotBlank()) {
-                            Spacer(Modifier.height(16.dp))
-                            TopicBody(text = topic.content)
-                        }
-                        Spacer(Modifier.height(24.dp))
                     }
-                    // 一条回复都没有时，楼层/对话切换没有意义，连「回复 0」一起不显示。
-                    if (replies.isNotEmpty()) {
-                        ReplyHeader(
-                            // V2 分页时只拿到了前 20 条，条数应以服务端总数为准；
-                            // 刚发出去的回复可能让本地比服务端还多，取大值避免数字倒退。
-                            count = if (repliesPaged) maxOf(topic.replies, replies.size) else replies.size,
-                            conversationCount = if (threaded) conversationCount else 0,
-                            threaded = threaded,
-                            onToggle = onToggleThreaded,
-                        )
-                    }
-                }
 
-                replyItems(
-                    topicAuthor = topic?.member?.username,
-                    rows = rows,
-                    onAuthor = onAuthor,
-                    onReplyTo = if (canReply) ({ reply -> onReply(reply) }) else null,
-                    onShareReply = { reply ->
-                        topic?.let { sharePayload = replySharePayload(it, reply) }
-                    },
-                )
+                    replyItems(
+                        topicAuthor = topic?.member?.username,
+                        rows = rows,
+                        onAuthor = onAuthor,
+                        onReplyTo = if (canReply) ({ reply -> onReply(reply) }) else null,
+                        onShareReply = { reply ->
+                            topic?.let { sharePayload = replySharePayload(it, reply) }
+                        },
+                    )
 
-                item {
-                    if (!loading && replies.isEmpty() && !hasMoreReplies) {
-                        Text(
-                            "还没有回复",
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
-                            fontSize = 13.sp,
-                            color = Ink.Tertiary,
-                        )
-                    } else if (repliesPaged) {
-                        // V2 分页：底部是显式的「加载更多」，不再靠整页 loading 兜底。
-                        // 只有确实还有下一页（或正在加载）才出现，短帖底部不额外多说一句「到底了」。
-                        if (hasMoreReplies || moreRepliesLoading) {
-                            ListFooter(
-                                canLoadMore = hasMoreReplies,
-                                loading = moreRepliesLoading && !pullRefreshing,
-                                hint = null,
-                                onLoadMore = onLoadMoreReplies,
+                    item {
+                        if (!loading && replies.isEmpty() && !hasMoreReplies) {
+                            Text(
+                                "还没有回复",
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
+                                fontSize = 13.sp,
+                                color = Ink.Tertiary,
                             )
+                        } else if (repliesPaged) {
+                            // V2 分页：底部是显式的「加载更多」，不再靠整页 loading 兜底。
+                            // 只有确实还有下一页（或正在加载）才出现，短帖底部不额外多说一句「到底了」。
+                            if (hasMoreReplies || moreRepliesLoading) {
+                                ListFooter(
+                                    canLoadMore = hasMoreReplies,
+                                    loading = moreRepliesLoading && !pullRefreshing,
+                                    hint = null,
+                                    onLoadMore = onLoadMoreReplies,
+                                )
+                            }
+                        } else if (loading && !pullRefreshing) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                            ) {
+                                PixelLoader(size = 6.dp, gap = 3.dp, color = Ink.Secondary)
+                                Text("正在读取回复…", fontSize = 12.5.sp, color = Ink.Tertiary)
+                            }
                         }
-                    } else if (loading && !pullRefreshing) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(9.dp),
-                        ) {
-                            PixelLoader(size = 6.dp, gap = 3.dp, color = Ink.Secondary)
-                            Text("正在读取回复…", fontSize = 12.5.sp, color = Ink.Tertiary)
-                        }
+                        Spacer(Modifier.height(40.dp))
                     }
-                    Spacer(Modifier.height(40.dp))
                 }
             }
         }
@@ -460,3 +482,5 @@ private fun ModeTab(label: String, selected: Boolean, onClick: () -> Unit) {
         fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
     )
 }
+
+private val V2EX_TOPIC_PATH = Regex("/t/([0-9]+)/?")
