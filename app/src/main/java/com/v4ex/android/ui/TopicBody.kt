@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.clickable
 import com.mikepenz.markdown.model.ImageTransformer
 import com.mikepenz.markdown.model.ImageData
+import com.mikepenz.markdown.model.MarkdownAnnotator
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -18,6 +19,7 @@ import com.mikepenz.markdown.coil2.Coil2ImageTransformerImpl
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.markdownPadding
 import com.v4ex.android.ui.theme.Ink
 
@@ -33,6 +35,7 @@ fun MarkdownContent(
     text: String,
     modifier: Modifier = Modifier,
     renderer: MarkdownRenderer = MarkdownRenderer.Modern,
+    annotator: MarkdownAnnotator = markdownAnnotator(),
 ) {
     var preview by remember(text) { mutableStateOf<String?>(null) }
     // 行内小图（表情）还是交给 Coil 的 transformer；独占一段的大图由自定义 paragraph 组件接管。
@@ -56,6 +59,7 @@ fun MarkdownContent(
                 content = remember(text) { normalizeMarkdownLineEndings(text) },
                 modifier = modifier.fillMaxWidth(),
                 imageTransformer = images,
+                annotator = annotator,
                 components = components,
                 colors = markdownColor(
                     text = Ink.Primary, linkText = Ink.Blue,
@@ -80,5 +84,5 @@ fun MarkdownContent(
 /** Topic bodies use the modern renderer. */
 @Composable
 fun TopicBody(text: String, modifier: Modifier = Modifier) {
-    MarkdownContent(text = text, modifier = modifier)
+    MarkdownContent(text = text, modifier = modifier, annotator = posterBlockAnnotator)
 }

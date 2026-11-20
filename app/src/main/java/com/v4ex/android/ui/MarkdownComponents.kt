@@ -9,12 +9,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,6 +114,12 @@ private fun ASTNode.findNode(type: IElementType): ASTNode? {
 internal fun ArticleCode(code: String, language: String?) {
     val palette = codePalette()
     val highlighted = remember(code, language, palette) { highlightCode(code, language, palette) }
+    val selectableCode = remember(highlighted) {
+        buildAnnotatedString {
+            append(highlighted)
+            markPosterBlockStart()
+        }
+    }
     val label = remember(language) { codeFenceLabel(language) }
     Column(
         Modifier
@@ -120,13 +128,15 @@ internal fun ArticleCode(code: String, language: String?) {
             .background(Ink.ChipBg),
     ) {
         if (label != null) {
-            Text(
-                text = label,
-                modifier = Modifier.padding(start = 12.dp, top = 8.dp),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Ink.Secondary,
-            )
+            DisableSelection {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Ink.Secondary,
+                )
+            }
         }
         Box(
             Modifier
@@ -135,7 +145,7 @@ internal fun ArticleCode(code: String, language: String?) {
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             BasicText(
-                text = highlighted,
+                text = selectableCode,
                 style = TextStyle(
                     color = Ink.Primary,
                     fontFamily = FontFamily.Monospace,

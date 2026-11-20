@@ -16,6 +16,8 @@ import android.text.TextPaint
 import android.text.TextUtils
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -115,26 +117,101 @@ internal fun renderSharePoster(payload: SharePayload, blocks: List<MdBlock> = em
     val footerHeight = text(if (payload.link.contains("#reply")) "楼层摘录 · 在 V2EX 阅读讨论" else "帖子摘录 · 在 V2EX 阅读讨论",
         footerY + 78f, 34f, accent, 2, width = 620)
     text(payload.link, footerY + 78f + footerHeight + 14f, 26f, secondary, 2, width = 620)
-    val qr = QRCodeWriter().encode(payload.link, BarcodeFormat.QR_CODE, 240, 240,
-        mapOf(EncodeHintType.CHARACTER_SET to "UTF-8", EncodeHintType.MARGIN to 1))
-    val qrBitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)
-    for (y in 0 until 240) for (x in 0 until 240) {
-        qrBitmap.setPixel(x, y, if (qr[x, y]) Color.BLACK else Color.WHITE)
-    }
-    canvas.drawBitmap(qrBitmap, 752f, footerY, null)
-    qrBitmap.recycle()
+    drawPosterQr(canvas, payload.link, 752f, footerY, 240, margin = 1)
     return bitmap
 }
 
+internal data class SelectedTopicExcerpt(val text: String, val author: String)
+
+private class SelectedExcerptTooLong : IllegalArgumentException()
+
+private fun renderSelectedExcerpt(
+    payload: SharePayload,
+    excerpt: SelectedTopicExcerpt,
+    dark: Boolean,
+): Bitmap {
+    val background = if (dark) Color.rgb(25, 28, 32) else Color.rgb(248, 246, 240)
+    val primary = if (dark) Color.rgb(235, 237, 240) else Color.rgb(30, 37, 43)
+    val secondary = if (dark) Color.rgb(185, 193, 201) else Color.rgb(89, 96, 100)
+    val accent = if (dark) Color.rgb(159, 185, 207) else Color.rgb(83, 105, 123)
+    fun layout(value: String, size: Float, color: Int, width: Int, font: Typeface, lines: Int): StaticLayout {
+        val paint = TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = size
+            this.color = color
+            typeface = font
+        }
+        return StaticLayout.Builder.obtain(value, 0, value.length, paint, width)
+            .setIncludePad(false)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
+            .setLineSpacing(10f, 1.15f)
+            .setMaxLines(lines)
+            .setEllipsize(TextUtils.TruncateAt.END)
+            .build()
+    }
+
+    val maxBodyLines = 56
+    val body = layout(excerpt.text, 54f, primary, 888, Typeface.SERIF, maxBodyLines + 1)
+    val headerBottom = 240
+    val footerTop = maxOf(650, headerBottom + body.height + 88)
+    val height = footerTop + 310
+    if (height > 4096 || body.lineCount > maxBodyLines) throw SelectedExcerptTooLong()
+
+    val bitmap = Bitmap.createBitmap(1080, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(background)
+    fun draw(text: StaticLayout, left: Float, top: Float) {
+        canvas.save()
+        canvas.translate(left, top)
+        text.draw(canvas)
+        canvas.restore()
+    }
+
+    val rulePaint = android.graphics.Paint().apply { color = accent; alpha = 96 }
+    canvas.drawRect(96f, 92f, 156f, 97f, rulePaint)
+    draw(layout("V4EX · 帖子摘录", 29f, accent, 888, Typeface.DEFAULT_BOLD, 1), 96f, 120f)
+    draw(body, 96f, headerBottom.toFloat())
+
+    val footerY = footerTop.toFloat()
+    canvas.drawRect(96f, footerY, 984f, footerY + 2f, rulePaint)
+    val source = if (excerpt.author.isBlank()) "V2EX" else "@${excerpt.author} · V2EX"
+    val byline = layout(source, 30f, secondary, 632, Typeface.DEFAULT, 1)
+    draw(byline, 96f, footerY + 64f)
+    draw(
+        layout(payload.title, 38f, primary, 632, Typeface.DEFAULT_BOLD, 3),
+        96f, footerY + 64f + byline.height + 16f,
+    )
+    drawPosterQr(canvas, payload.link, 780f, footerY + 42f, 204, margin = 4)
+    draw(layout("扫码查看原帖", 23f, secondary, 204, Typeface.DEFAULT, 1), 813f, footerY + 252f)
+    return bitmap
+}
+
+private fun drawPosterQr(canvas: Canvas, link: String, left: Float, top: Float, size: Int, margin: Int) {
+    val qr = QRCodeWriter().encode(
+        link, BarcodeFormat.QR_CODE, size, size,
+        mapOf(EncodeHintType.CHARACTER_SET to "UTF-8", EncodeHintType.MARGIN to margin),
+    )
+    val pixels = IntArray(size * size) { index ->
+        if (qr[index % size, index / size]) Color.BLACK else Color.WHITE
+    }
+    val qrBitmap = Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
+    canvas.drawBitmap(qrBitmap, left, top, null)
+    qrBitmap.recycle()
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
+internal fun SharePosterDialog(
+    payload: SharePayload,
+    selectedExcerpt: SelectedTopicExcerpt? = null,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
     val appDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     var themeOverride by remember(payload) { mutableStateOf<Boolean?>(null) }
     val posterDark = themeOverride ?: appDark
     var bitmap by remember(payload) { mutableStateOf<Bitmap?>(null) }
     var uri by remember(payload) { mutableStateOf<android.net.Uri?>(null) }
-    var failed by remember(payload) { mutableStateOf(false) }
+    var error by remember(payload, selectedExcerpt) { mutableStateOf<String?>(null) }
     var generating by remember(payload) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val saveToGallery = rememberGallerySaveAction { result ->
@@ -145,23 +222,29 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
             GallerySaveResult.PermissionDenied -> "需要存储权限才能保存到相册"
         }, Toast.LENGTH_SHORT).show()
     }
-    LaunchedEffect(payload, posterDark) {
+    LaunchedEffect(payload, selectedExcerpt, posterDark) {
         generating = true
-        failed = false
+        bitmap = null
+        uri = null
+        error = null
         try {
             val result = withContext(Dispatchers.IO) {
-                val blocks = payload.markdown?.let { parseMarkdown(it) }.orEmpty()
-                val images = mutableMapOf<String, Bitmap>()
-                for (url in blocks.mapNotNull { when (it) {
-                    is MdBlock.Image -> it.url
-                    is MdBlock.InlineImage -> it.url
-                    else -> null
-                } }.distinct()) {
-                    val result = context.imageLoader.execute(ImageRequest.Builder(context)
-                        .data(url).size(1080, 1080).allowHardware(false).build())
-                    (result.drawable as? BitmapDrawable)?.bitmap?.let { images[url] = it }
+                val image = if (selectedExcerpt != null) {
+                    renderSelectedExcerpt(payload, selectedExcerpt, posterDark)
+                } else {
+                    val blocks = payload.markdown?.let { parseMarkdown(it) }.orEmpty()
+                    val images = mutableMapOf<String, Bitmap>()
+                    for (url in blocks.mapNotNull { when (it) {
+                        is MdBlock.Image -> it.url
+                        is MdBlock.InlineImage -> it.url
+                        else -> null
+                    } }.distinct()) {
+                        val result = context.imageLoader.execute(ImageRequest.Builder(context)
+                            .data(url).size(1080, 1080).allowHardware(false).build())
+                        (result.drawable as? BitmapDrawable)?.bitmap?.let { images[url] = it }
+                    }
+                    renderSharePoster(payload, blocks, images, posterDark)
                 }
-                val image = renderSharePoster(payload, blocks, images, posterDark)
                 val directory = File(context.cacheDir, "share-posters").apply { mkdirs() }
                 directory.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86400000L }
                     ?.forEach { it.delete() }
@@ -173,8 +256,10 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
             uri = result.second
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (_: SelectedExcerptTooLong) {
+            error = "选中的文字太长，请缩小选区后重试"
         } catch (_: Exception) {
-            failed = true
+            error = "海报生成失败，请关闭后重试"
         } finally {
             generating = false
         }
@@ -183,7 +268,7 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(16.dp)) {
                 Text("图片海报", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = themeOverride == null, onClick = { themeOverride = null }, label = { Text("跟随主题") })
                     FilterChip(selected = themeOverride == false, onClick = { themeOverride = false }, label = { Text("浅色") })
                     FilterChip(selected = themeOverride == true, onClick = { themeOverride = true }, label = { Text("深色") })
@@ -191,14 +276,18 @@ internal fun SharePosterDialog(payload: SharePayload, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 val preview = bitmap
                 if (preview != null) {
-                    Image(preview.asImageBitmap(), "帖子分享海报预览",
-                        Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(preview.width.toFloat() / preview.height))
-                } else if (failed) {
-                    Text("海报生成失败，请关闭后重试")
+                    Box(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                        Image(
+                            preview.asImageBitmap(), "帖子分享海报预览",
+                            Modifier.fillMaxWidth().aspectRatio(preview.width.toFloat() / preview.height),
+                        )
+                    }
+                } else if (error != null) {
+                    Text(error.orEmpty())
                 } else {
                     CircularProgressIndicator(Modifier.padding(24.dp))
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
                     TextButton(onClick = onDismiss) { Text("关闭") }
                     TextButton(enabled = bitmap != null && !saving && !generating, onClick = {
                         val image = bitmap ?: return@TextButton

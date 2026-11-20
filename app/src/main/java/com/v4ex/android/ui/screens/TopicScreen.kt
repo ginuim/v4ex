@@ -70,7 +70,10 @@ import com.v4ex.android.ui.ErrorLine
 import com.v4ex.android.ui.ListFooter
 import com.v4ex.android.ui.LoadingBlock
 import com.v4ex.android.ui.PixelLoader
+import com.v4ex.android.ui.SelectedTopicExcerpt
+import com.v4ex.android.ui.SharePosterDialog
 import com.v4ex.android.ui.TopicBody
+import com.v4ex.android.ui.TopicTextSelection
 import com.v4ex.android.ui.ShareSheet
 import com.v4ex.android.ui.replyItems
 import com.v4ex.android.ui.theme.Ink
@@ -125,6 +128,7 @@ fun TopicScreen(
     }
     // 分享面板的内容：帖子本身，或长按楼层时的「带 #replyN 锚点」的楼层摘录。
     var sharePayload by remember { mutableStateOf<SharePayload?>(null) }
+    var selectedExcerpt by remember(topic?.id) { mutableStateOf<String?>(null) }
     // 管理菜单只对已确认具备资格的主题作者出现。
     var menuOpen by remember { mutableStateOf(false) }
     // 「放到首页」会真扣铜币且不可撤回，所以先确认一次再发请求。
@@ -274,7 +278,9 @@ fun TopicScreen(
                             }
                             if (topic.content.isNotBlank()) {
                                 Spacer(Modifier.height(16.dp))
-                                TopicBody(text = topic.content)
+                                TopicTextSelection(onPosterRequested = { selectedExcerpt = it }) {
+                                    TopicBody(text = topic.content)
+                                }
                             }
                             Spacer(Modifier.height(24.dp))
                         }
@@ -346,6 +352,16 @@ fun TopicScreen(
             // 楼层分享的链接带 #replyN，浏览器会直接跳到那一楼
             onOpenInBrowser = { runCatching { uriHandler.openUri(payload.link) } },
         )
+    }
+
+    if (topic != null) {
+        selectedExcerpt?.let { excerpt ->
+            SharePosterDialog(
+                payload = SharePayload(title = topic.title, link = topic.url),
+                selectedExcerpt = SelectedTopicExcerpt(excerpt, topic.member.username),
+                onDismiss = { selectedExcerpt = null },
+            )
+        }
     }
 
     if (boostConfirm && canManage) {
